@@ -17,7 +17,7 @@ while ($true); return}
 
 if (-not $cmd) {Write-Host -f cyan "`nUsage: version `"command`" -purge -prune ## -help"; Write-Host -f white "Where -purge deletes all histories of a command and -prune ensures that the script keeps a maximum ## of copies (10 is the default).`n"; return}
 
-$backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$command"; $validatecommand = Get-Command $cmd -ErrorAction SilentlyContinue
+$backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $validatecommand = Get-Command $cmd -ErrorAction SilentlyContinue
 if ($purge) {Remove-Item $backupdirectory -Recurse -Force -ErrorAction SilentlyContinue; Write-Host -f red "`nDirectory for $cmd has been purged.`n"; return}
 if (-not $validatecommand -or $validatecommand.CommandType -notin 'Function','ExternalScript','Alias') {Write-Host -f red "`nInvalid command: $cmd`n"; return}
 $cmddetails = (Get-Command $cmd).definition; $cmdsourceinfo = (Get-Command $cmd).source; $callcmd = (Get-Command $cmd).displayname
