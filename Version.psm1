@@ -84,7 +84,7 @@ Also, if the command, or parent command in the case of an alias, is simply a ref
 
 There is also a -quiet option to reduce the screen output.
 
-By default, the script is set to prune older copies after 10 revisions, but this can be modified and you can use the -purge or ## options on demand.
+By default, the script is set to prune older copies after 10 revisions, but this can be modified and you can use the -purge or ## options, as required.
 
 The prune by ## feature uses logical assumptions to determine development dates, by keeping the oldest and latest versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that major revisions are kept over minor ones.
 
