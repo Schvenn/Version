@@ -1,7 +1,8 @@
-function version ($cmd,[switch]$prune,[switch]$purge,$maxhistory = 10, [switch]$quiet, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
+function version ($cmd, [switch]$purge, $maxhistory = 10, [switch]$quiet, [switch]$help, [switch]$list) {# Keep a historical list of functions and aliases during development, but only if they change.
+""
 
 if ($help) {function scripthelp ($section) {# (Internal) Generate the help sections from the comments section of the script.
-""; Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
+Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
 if ($lines.Count -gt 1) {$lines[1] | Out-String | Out-Host -Paging}; Write-Host -ForegroundColor Yellow ("-" * 100)}
 $scripthelp = Get-Content -Raw -Path $PSCommandPath; $sections = [regex]::Matches($scripthelp, "(?im)^## (.+?)(?=\r?\n)")
 if ($sections.Count -eq 1) {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help:" -ForegroundColor Cyan; scripthelp $sections[0].Groups[1].Value; ""; return}
@@ -26,25 +27,47 @@ $cmddetails = (Get-Command $cmd).definition; $cmdsourceinfo = (Get-Command $cmd)
 if ($validatecommand.CommandType -in 'Alias') {$parentfunction = (Get-Command $cmddetails).definition; $truecommand = "$parentfunction`nsal -Name $cmd -Value $cmddetails"; $cmddetails = $truecommand}
 
 # Add the script content to the end, if the command is simply a placeholder for an external script.
-if ($cmddetails -match '\$script="([^"]+\.ps1)"; & \$script') {$ps1file = $matches[1]
+if ($cmddetails -match '(?i)\$script\w*\s*=\s*["'']?([^"]+\.ps1)[";&.\s]+\$script') {$ps1file = $matches[1]
 if ($ps1file -match '(\$\w+)') {$varName = $matches[1].Substring(1); $varValue = (Get-Variable -Name $varName).Value; $ps1file = $ps1file -replace [regex]::Escape($matches[1]), $varValue}
 if (Test-Path $ps1file) {$ps1Content = Get-Content $ps1file -Raw; $cmddetails += "`n" + ("-" * 100) + "`n" + $ps1Content}}
+
+# Output to screen.
+if (-not $quiet) {Write-Host -f cyan "Command: " -NoNewLine; Write-Host -f yellow $cmd; Write-Host -f cyan "Source: " -NoNewLine; Write-Host -f yellow $cmdsourceinfo; Write-Host -f yellow ("-"*100); Write-Host -f white $cmddetails"`n"; Write-Host -f yellow ("-"*100)}
 
 # Write the file.
 $filename = "$cmd - $(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').backup"; $backup = Join-Path $backupdirectory $filename; New-Item -ItemType Directory $backupdirectory -Force | Out-Null; $cmddetails | Out-File $backup -Force 
 
-# Output to screen.
-if (-not $quiet) {Write-Host -f cyan "Command: " -NoNewLine; Write-Host -f yellow $cmd; Write-Host -f cyan "Source: " -NoNewLine; Write-Host -f yellow $cmdsourceinfo; Write-Host -f yellow ("-"*100); Write-Host -f white $cmddetails"`n"; Write-Host -f yellow ("-"*100) 
-Write-Host -f green "File $backup saved."; Write-Host -f yellow ("-"*100); ""}
-if ($quiet) {Write-Host "$backup saved."}
+# Keep only unique hashes.
+$sha256 = [System.Security.Cryptography.SHA256]::Create(); $files = Get-ChildItem -Path $backupdirectory -File; $hashToFiles = @{}
+foreach ($file in $files) {try {$fileBytes = [System.IO.File]::ReadAllBytes($file.FullName); $fileHashBytes = $sha256.ComputeHash($fileBytes); $fileHash = [System.BitConverter]::ToString($fileHashBytes) -replace '-', ''
+if (-not $hashToFiles.ContainsKey($fileHash)) {$hashToFiles[$fileHash] = @()}; $hashToFiles[$fileHash] += $file}
+catch {Write-Warning "Failed to hash file $($file.FullName): $_"}}
+foreach ($group in $hashToFiles.Values) {$sortedGroup = $group | Sort-Object LastWriteTime
+if ($sortedGroup.Count -gt 1) {$sortedGroup[1..($sortedGroup.Count - 1)] | ForEach-Object {Remove-Item $_.FullName -Force}}}
 
-# Pruning.
-$files = Get-ChildItem -Path $backupdirectory -File | Sort-Object Name; $groupedFiles = $files | Group-Object {if ($_ -match '(\d{4}-\d{2}-\d{2})_\d{2}-\d{2}-\d{2}') {return $matches[1]}}; $toRemove = @()
-foreach ($group in $groupedFiles) {$filesInGroup = $group.Group | Sort-Object Name    
-if ($filesInGroup.Count -gt 2) {$toRemove += $filesInGroup[1..($filesInGroup.Count - 2)]}}
-if ($toRemove.Count -gt 0) {$toRemove | ForEach-Object {Remove-Item $_.FullName -Force}}
-$remainingFiles = Get-ChildItem -Path $backupdirectory -File | Sort-Object LastWriteTime; $extraRemovals = $remainingFiles.Count - $maxhistory
-if ($extraRemovals -gt 0) {$oldestFiles = $remainingFiles | Select-Object -First $extraRemovals; $oldestFiles | ForEach-Object {Remove-Item $_.FullName -Force}}}
+# Display results of determination.
+if (Test-Path $backup) {if (-not $quiet) {Write-Host -ForegroundColor Green "File $backup saved."; Write-Host -ForegroundColor Yellow ("-" * 100)}
+elseif ($quiet) {Write-Host "$backup saved."}}
+else {Write-Host -f red "Backup identical to an existing file, skipping creation.`n"}
+
+# Group files by date and keep only the oldest and newest per day.
+$files = Get-ChildItem -Path $backupdirectory -File | Sort-Object Name; $filesByDate = $files | Group-Object {if ($_ -match '(\d{4}-\d{2}-\d{2})_\d{2}-\d{2}-\d{2}') {$matches[1]}
+else {'unknown'}}
+foreach ($group in $filesByDate) {$sortedGroup = $group.Group | Sort-Object Name
+if ($sortedGroup.Count -gt 2) {$sortedGroup[1..($sortedGroup.Count - 2)] | ForEach-Object {Remove-Item $_.FullName -Force}}}
+
+# Enforce maxhistory count globally by deleting oldest files beyond the set limit.
+$files = Get-ChildItem -Path $backupdirectory -File | Sort-Object LastWriteTime; $excess = $files.Count - $maxhistory
+if ($excess -gt 0) {$files | Select-Object -First $excess | ForEach-Object {Remove-Item $_.FullName -Force}}
+
+# Enumeration
+if ($list) {Write-Host -f yellow "Available versions:`n"
+$headers = @("Size", "SHA256", "Last Modified"); $padding = 5; $files = Get-ChildItem -Path $backupdirectory -File
+$rows = foreach ($file in $files) {$hash = Get-FileHash -Path $file.FullName -Algorithm SHA256; [PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hash.Hash; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}
+$widths = @{}; foreach ($header in $headers) {$maxLen = ($rows | ForEach-Object {($_.PSObject.Properties[$header].Value.ToString()).Length;}) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum; $widths[$header] = [Math]::Max($maxLen, $header.Length)}
+$spacer = ' ' * $padding
+$headerLine = ($headers | ForEach-Object {$_.PadRight($widths[$_]);}) -join $spacer; Write-Host $headerLine -ForegroundColor Cyan
+foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -ForegroundColor White}}; ""; Write-Host -f yellow ("-"*100); ""; return}
 
 Export-ModuleMember -Function version
 
@@ -61,9 +84,11 @@ Also, if the command, or parent command in the case of an alias, is simply a ref
 
 There is also a -quiet option to reduce the screen output.
 
-By default, the script is set to prune older copies after 10 revisions, but this can be modified and you can use the -prune or -purge entries on demand.
+By default, the script is set to prune older copies after 10 revisions, but this can be modified and you can use the -purge or ## options on demand.
 
-The prune uses logical assumptions to determine development dates, by keeping the oldest and latest versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that major revisions are kept over minor ones.
+The prune by ## feature uses logical assumptions to determine development dates, by keeping the oldest and latest versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that major revisions are kept over minor ones.
 
-It also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than an older one, thereby eliminating duplicates and wasted disk space.
+It also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older one.
+
+The list function will enumerate a list of all versions of the command that are currently archived.
 ##>
