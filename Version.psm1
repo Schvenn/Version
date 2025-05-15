@@ -59,7 +59,7 @@ $files = Get-ChildItem -Path $backupdirectory -File | Sort-Object LastWriteTime;
 if ($excess -gt 0) {$files | Select-Object -First $excess | ForEach-Object {Remove-Item $_.FullName -Force}}
 
 # Enumeration
-if ($list) {Write-Host -f yellow "Available versions:`n"
+if ($list) {Write-Host -f yellow "`nAvailable versions:`n"
 $headers = @("Size", "SHA256", "Last Modified"); $padding = 5; $files = Get-ChildItem -Path $backupdirectory -File
 $rows = foreach ($file in $files) {$hash = Get-FileHash -Path $file.FullName -Algorithm SHA256; [PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hash.Hash; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}
 $widths = @{}; foreach ($header in $headers) {$maxLen = ($rows | ForEach-Object {($_.PSObject.Properties[$header].Value.ToString()).Length;}) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum; $widths[$header] = [Math]::Max($maxLen, $header.Length)}
