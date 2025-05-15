@@ -17,4 +17,4 @@ The prune by ## feature uses logical assumptions to determine development dates,
 
 It also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older one.
 
-The list function will enumerate a list of all versions of the command that are currently archived.
+The -all switch will enumerate a list of all functions and aliases available as a result of the current user's profile and run the command against all of them.
