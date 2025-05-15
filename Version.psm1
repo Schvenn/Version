@@ -1,4 +1,5 @@
-function version ($cmd, [switch]$purge, $maxhistory = 10, [switch]$quiet, [switch]$help, [switch]$list) {# Keep a historical list of functions and aliases during development, but only if they change.
+function version ($cmd, [switch]$purge, $maxhistory = 10, [switch]$quiet, [switch]$list, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
+
 if ($help) {function scripthelp ($section) {# (Internal) Generate the help sections from the comments section of the script.
 ""; Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
 if ($lines.Count -gt 1) {$lines[1] | Out-String | Out-Host -Paging}; Write-Host -ForegroundColor Yellow ("-" * 100)}
@@ -14,7 +15,7 @@ if ($index -ge 1 -and $index -le $sections.Count) {$selection = $index}
 else {$selection = $null}} else {""; return}}
 while ($true); return}
 
-if (-not $cmd) {Write-Host -f cyan "`nUsage: version `"command`" -purge -prune ## -help"; Write-Host -f white "Where -purge deletes all histories of a command and -prune ensures that the script keeps a maximum ## of copies (10 is the default).`n"; return}
+if (-not $cmd) {Write-Host -f cyan "`nUsage: version `"command`" -purge -prune ## -list -help"; Write-Host -f white "Where -purge deletes all histories of a command and -prune ensures that the script keeps a maximum ## of copies (10 is the default).`n"; return}
 
 $backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $validatecommand = Get-Command $cmd -ErrorAction SilentlyContinue
 if ($purge) {Remove-Item $backupdirectory -Recurse -Force -ErrorAction SilentlyContinue; Write-Host -f red "`nDirectory for $cmd has been purged.`n"; return}
