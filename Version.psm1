@@ -15,7 +15,7 @@ if ($index -ge 1 -and $index -le $sections.Count) {$selection = $index}
 else {$selection = $null}} else {""; return}}
 while ($true); return}
 
-if (-not $cmd) {Write-Host -f cyan "`nUsage: version `"command`" -purge ## -quiet -list -help"; Write-Host -f white "Where -purge deletes all histories of a command and -prune ensures that the script keeps a maximum ## of copies (10 is the default).`n"; return}
+if (-not $cmd) {Write-Host -f cyan "`nUsage: version `"command`" -purge ## -quiet -list -help"; Write-Host -f white "Where -purge deletes all histories of a command and ## ensures that the script keeps a maximum ## of copies (10 is the default).`n"; return}
 
 $backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $validatecommand = Get-Command $cmd -ErrorAction SilentlyContinue
 if ($purge) {Remove-Item $backupdirectory -Recurse -Force -ErrorAction SilentlyContinue; Write-Host -f red "`nDirectory for $cmd has been purged.`n"; return}
