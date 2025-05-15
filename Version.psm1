@@ -1,8 +1,6 @@
 function version ($cmd, [switch]$purge, $maxhistory = 10, [switch]$quiet, [switch]$help, [switch]$list) {# Keep a historical list of functions and aliases during development, but only if they change.
-""
-
 if ($help) {function scripthelp ($section) {# (Internal) Generate the help sections from the comments section of the script.
-Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
+""; Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
 if ($lines.Count -gt 1) {$lines[1] | Out-String | Out-Host -Paging}; Write-Host -ForegroundColor Yellow ("-" * 100)}
 $scripthelp = Get-Content -Raw -Path $PSCommandPath; $sections = [regex]::Matches($scripthelp, "(?im)^## (.+?)(?=\r?\n)")
 if ($sections.Count -eq 1) {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help:" -ForegroundColor Cyan; scripthelp $sections[0].Groups[1].Value; ""; return}
@@ -32,7 +30,7 @@ if ($ps1file -match '(\$\w+)') {$varName = $matches[1].Substring(1); $varValue =
 if (Test-Path $ps1file) {$ps1Content = Get-Content $ps1file -Raw; $cmddetails += "`n" + ("-" * 100) + "`n" + $ps1Content}}
 
 # Output to screen.
-if (-not $quiet) {Write-Host -f cyan "Command: " -NoNewLine; Write-Host -f yellow $cmd; Write-Host -f cyan "Source: " -NoNewLine; Write-Host -f yellow $cmdsourceinfo; Write-Host -f yellow ("-"*100); Write-Host -f white $cmddetails"`n"; Write-Host -f yellow ("-"*100)}
+if (-not $quiet) {""; Write-Host -f cyan "Command: " -NoNewLine; Write-Host -f yellow $cmd; Write-Host -f cyan "Source: " -NoNewLine; Write-Host -f yellow $cmdsourceinfo; Write-Host -f yellow ("-"*100); Write-Host -f white $cmddetails"`n"; Write-Host -f yellow ("-"*100)}
 
 # Write the file.
 $filename = "$cmd - $(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').backup"; $backup = Join-Path $backupdirectory $filename; New-Item -ItemType Directory $backupdirectory -Force | Out-Null; $cmddetails | Out-File $backup -Force 
@@ -46,9 +44,9 @@ foreach ($group in $hashToFiles.Values) {$sortedGroup = $group | Sort-Object Las
 if ($sortedGroup.Count -gt 1) {$sortedGroup[1..($sortedGroup.Count - 1)] | ForEach-Object {Remove-Item $_.FullName -Force}}}
 
 # Display results of determination.
-if (Test-Path $backup) {if (-not $quiet) {Write-Host -ForegroundColor Green "File $backup saved."; Write-Host -ForegroundColor Yellow ("-" * 100)}
-elseif ($quiet) {Write-Host "$backup saved."}}
-else {Write-Host -f red "Backup identical to an existing file, skipping creation.`n"}
+if (Test-Path $backup) {if ($quiet) {Write-Host "$backup saved."}	
+elseif (-not $quiet) {Write-Host -ForegroundColor Green "File $backup saved."; Write-Host -ForegroundColor Yellow ("-" * 100)}}
+if (-not (Test-Path $backup)) {Write-Host -f red "Backup identical to an existing file, skipping creation."}
 
 # Group files by date and keep only the oldest and newest per day.
 $files = Get-ChildItem -Path $backupdirectory -File | Sort-Object Name; $filesByDate = $files | Group-Object {if ($_ -match '(\d{4}-\d{2}-\d{2})_\d{2}-\d{2}-\d{2}') {$matches[1]}
@@ -67,7 +65,7 @@ $rows = foreach ($file in $files) {$hash = Get-FileHash -Path $file.FullName -Al
 $widths = @{}; foreach ($header in $headers) {$maxLen = ($rows | ForEach-Object {($_.PSObject.Properties[$header].Value.ToString()).Length;}) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum; $widths[$header] = [Math]::Max($maxLen, $header.Length)}
 $spacer = ' ' * $padding
 $headerLine = ($headers | ForEach-Object {$_.PadRight($widths[$_]);}) -join $spacer; Write-Host $headerLine -ForegroundColor Cyan
-foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -ForegroundColor White}}; ""; Write-Host -f yellow ("-"*100); ""; return}
+foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -ForegroundColor White}; ""; Write-Host -f yellow ("-"*100); ""}; return}
 
 Export-ModuleMember -Function version
 
