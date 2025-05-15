@@ -1,4 +1,4 @@
-function version ($cmd, [switch]$purge, $maxhistory = 10, [switch]$quiet, [switch]$list, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
+function version ($cmd, [switch]$purge, $maxhistory = 10, [switch]$quiet, [switch]$all, [switch]$force, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
 
 if ($help) {function scripthelp ($section) {# (Internal) Generate the help sections from the comments section of the script.
 ""; Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
@@ -15,9 +15,9 @@ if ($index -ge 1 -and $index -le $sections.Count) {$selection = $index}
 else {$selection = $null}} else {""; return}}
 while ($true); return}
 
-if (-not $cmd) {Write-Host -f cyan "`nUsage: version `"command`" -purge ## -quiet -list -help"; Write-Host -f white "Where -purge deletes all histories of a command and ## ensures that the script keeps a maximum ## of copies (10 is the default).`n"; return}
+if (-not $cmd -and -not $all) {Write-Host -f cyan "`nUsage: version `"command`" -purge ## -quiet -all -help"; Write-Host -f white "Where -purge deletes all histories of a command and ## ensures that the script keeps a maximum ## of copies (10 is the default) and -all backs up every function and alias available under as a result of the current user profile.`n"; return}
 
-$backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $validatecommand = Get-Command $cmd -ErrorAction SilentlyContinue
+function archive ($cmd, $purge, $maxhistory, $quiet) {$backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $validatecommand = Get-Command $cmd -ErrorAction SilentlyContinue
 if ($purge) {Remove-Item $backupdirectory -Recurse -Force -ErrorAction SilentlyContinue; Write-Host -f red "`nDirectory for $cmd has been purged.`n"; return}
 if (-not $validatecommand -or $validatecommand.CommandType -notin 'Function','ExternalScript','Alias') {Write-Host -f red "`nInvalid command: $cmd`n"; return}
 $cmddetails = (Get-Command $cmd).definition; $cmdsourceinfo = (Get-Command $cmd).source; $callcmd = (Get-Command $cmd).displayname; $cmd = $cmd.tolower()
@@ -60,13 +60,32 @@ $files = Get-ChildItem -Path $backupdirectory -File | Sort-Object LastWriteTime;
 if ($excess -gt 0) {$files | Select-Object -First $excess | ForEach-Object {Remove-Item $_.FullName -Force}}
 
 # Enumeration
-if ($list) {Write-Host -f yellow "`nAvailable versions:`n"
+if (-not $quiet) {Write-Host -f yellow "`nAvailable versions:`n"
 $headers = @("Size", "SHA256", "Last Modified"); $padding = 5; $files = Get-ChildItem -Path $backupdirectory -File
 $rows = foreach ($file in $files) {$hash = Get-FileHash -Path $file.FullName -Algorithm SHA256; [PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hash.Hash; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}
 $widths = @{}; foreach ($header in $headers) {$maxLen = ($rows | ForEach-Object {($_.PSObject.Properties[$header].Value.ToString()).Length;}) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum; $widths[$header] = [Math]::Max($maxLen, $header.Length)}
 $spacer = ' ' * $padding
 $headerLine = ($headers | ForEach-Object {$_.PadRight($widths[$_]);}) -join $spacer; Write-Host $headerLine -ForegroundColor Cyan
-foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -ForegroundColor White}; ""; Write-Host -f yellow ("-"*100); ""}; return}
+foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -ForegroundColor White}; ""; Write-Host -f yellow ("-"*100); ""}}
+
+# Run version against single command.
+if (-not $all) {archive $cmd $purge $maxhistory $quiet; return}
+
+# Run version against every command.
+if ($all) {$today = [int](Get-Date).day; $ranflag = "$PowerShell\Archive\Development History\.backupallthethings_ran"; $devHistoryPath = "$PowerShell\Archive\Development History"; $zipFile = "$PowerShell\Archive\Retired Functions and Aliases.zip"
+if ($force) {$today = 1}
+if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*sal\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object { $_.Groups[1].Value }}} | Where-Object { $_ -notmatch '-' } | Where-Object {Get-Command $_ -ErrorAction SilentlyContinue} | Sort-Object -Unique | ForEach-Object {archive $_ $purge $maxhistory $quiet}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
+if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-Null}
+
+# Enumerate and compare directories to current assets and archive retired ones.
+$currentFunctionsAndAliases = Get-Command -Type Function, Alias | Select-Object -ExpandProperty Name; $existingDirs = Get-ChildItem -Path $devHistoryPath -Directory | Select-Object -ExpandProperty Name; $retiredDirs = $existingDirs | Where-Object {$_ -notin $currentFunctionsAndAliases}
+if ($retiredDirs.Count -gt 2) {Write-Host -f white "The following commands are not present in the current session: " -NoNewLine; $retiredDirs -join ", " | Write-Host -f cyan; Write-Host -f white "This means that there are " -NoNewLine; Write-Host -f green $retiredDirs.Count -NoNewLine; Write-Host -f white " directories to archive. Are you sure you want to continue? " -NoNewLine; font red; $response = Read-Host "(Y/N)"; if ($response -notmatch "(?i)^Y") {font gray; ""; return}}
+font gray; if ($retiredDirs.Count -gt 0) {if (Test-Path $zipFile) {$retiredDirs | ForEach-Object {$dirPath = Join-Path $devHistoryPath $_; if (-not (Test-Path $dirPath)) {Write-Host "Warning: Directory not found: $dirPath"}
+else {Compress-Archive -Path $dirPath -DestinationPath $zipFile -Update}}}
+else {$retiredDirs | ForEach-Object {$dirPath = Join-Path $devHistoryPath $_
+Compress-Archive -Path $dirPath -DestinationPath $zipFile}}
+Start-Sleep -Seconds 1; Get-ChildItem -Path $dirPath -Recurse | Remove-Item -Force -Recurse; Remove-Item -Path $dirPath -Force}
+if ($retiredDirs.Count -gt 0) {Write-Host -f yellow "Retired Functions and Aliases archive updated with the following directories: " -NoNewLine; $retiredDirs -join ", " | Write-Host -f white}}}
 
 Export-ModuleMember -Function version
 
@@ -83,11 +102,11 @@ Also, if the command, or parent command in the case of an alias, is simply a ref
 
 There is also a -quiet option to reduce the screen output.
 
-By default, the script is set to prune older copies after 10 revisions, but this can be modified and you can use the -purge or ## options, as required.
+By default, the script is set to prune older copies after 10 revisions, but this can be modified and you can use the -purge or # options, as required.
 
-The prune by ## feature uses logical assumptions to determine development dates, by keeping the oldest and latest versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that major revisions are kept over minor ones.
+The prune by # feature uses logical assumptions to determine development dates, by keeping the oldest and latest versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that major revisions are kept over minor ones.
 
 It also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older one.
 
-The list function will enumerate a list of all versions of the command that are currently archived.
+The -all switch will enumerate a list of all functions and aliases available as a result of the current user's profile and run the command against all of them.
 ##>
