@@ -1,7 +1,12 @@
-function version ($cmd, [switch]$purge, $maxhistory = 10, [switch]$quiet, [switch]$all, [switch]$force, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
+function version ($cmd, [int]$maxhistory = 10,  [switch]$dev,  [switch]$stable, [switch]$quiet, [switch]$all, [switch]$force, [switch]$purge, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
 
-if ($help) {function scripthelp ($section) {# (Internal) Generate the help sections from the comments section of the script.
-""; Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
+# Ensure -dev is being called correctly for only single commands.
+$backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $devflag = Join-Path $backupdirectory ".development_flag"
+if ($dev -and (-not $cmd)) {Write-Host -f red "`nYou must specify a single command with -cmd when using -dev.`n"; return}
+if ($dev -and $stable) {Write-Host -f red "`nA command can only be under development or a stable release, not both.`n"; return}
+
+# Generate the help sections from the comments section of the script.
+if ($help) {function scripthelp ($section) {""; Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
 if ($lines.Count -gt 1) {$lines[1] | Out-String | Out-Host -Paging}; Write-Host -ForegroundColor Yellow ("-" * 100)}
 $scripthelp = Get-Content -Raw -Path $PSCommandPath; $sections = [regex]::Matches($scripthelp, "(?im)^## (.+?)(?=\r?\n)")
 if ($sections.Count -eq 1) {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help:" -ForegroundColor Cyan; scripthelp $sections[0].Groups[1].Value; ""; return}
@@ -15,28 +20,48 @@ if ($index -ge 1 -and $index -le $sections.Count) {$selection = $index}
 else {$selection = $null}} else {""; return}}
 while ($true); return}
 
-if (-not $cmd -and -not $all) {Write-Host -f cyan "`nUsage: version `"command`" -purge ## -quiet -all -help"; Write-Host -f white "Where -purge deletes all histories of a command and ## ensures that the script keeps a maximum ## of copies (10 is the default) and -all backs up every function and alias available under as a result of the current user profile.`n"; return}
+# Error handling for no $cmd.
+if (-not $cmd -and -not $all) {Write-Host -f cyan "`nUsage: version `"command`" -purge #(maxhistory) -(dev/stable) -quiet -all -help"; Write-Host -f yellow "-purge " -NoNewLine; Write-Host -f white "deletes all histories of a command."; Write-Host -f yellow "# " -NoNewLine; Write-Host -f white "sets the maximum number of copies to retain; 10 being the default."; Write-Host -f yellow "-dev " -NoNewLine; Write-Host -f white "marks the command as being under development, which temporarily turns off pruning, but -stable turns it back on."; Write-Host -f yellow "-quiet " -NoNewLine; Write-Host -f white "reduces screen output to a minimum."; Write-Host -f yellow "-all " -NoNewLine; Write-Host -f white "backs up every function and alias available as a result of the current user profile."; Write-Host -f yellow "-help " -NoNewLine; Write-Host -f white "provides in depth instructions about this function.`n"; return}
 
-function archive ($cmd, $purge, $maxhistory, $quiet) {$backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $validatecommand = Get-Command $cmd -ErrorAction SilentlyContinue
+# Ensure devflag is created or exists for single commands, but not -all.
+if ($dev -and $cmd -and -not $all) {if (Test-Path $devflag) {Write-Host -f cyan "`nThe command $cmd is already flagged as being under development. History pruning is therefore curtailed."}
+else {New-Item -Path $devflag -ItemType File -Force | Out-Null; Write-Host -f cyan "`nThe command $cmd is now flagged as being under development. History pruning is therefore curtailed."}}
+if ($dev -and $all) {Write-Host -f red "`nYou can only set the -dev flag for one command at a time.`n"; return}
+
+# -------------------------------- This is the beginning of the primary version logic. -------------------------------- 
+
+# Main version function.
+function archive {param ([string]$cmd, [int]$maxhistory, [switch]$stable, [switch]$quiet, [switch]$purge)
+
+$backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $devflag = Join-Path $backupdirectory ".development_flag"; $validatecommand = Get-Command $cmd -ErrorAction SilentlyContinue
+# Ensure devflag is removed or not set. This can be run against single commands or all commands.
+if ($stable) {if (-not (Test-Path $devflag)) {Write-Host -f cyan "`nThe command $cmd was not flagged as being under development. Therefore, no adjustment was necessary."}
+elseif (Test-Path $devflag) {Remove-Item $devflag -Force; Write-Host -f cyan "`nThe command $cmd is now flagged as being a stable release. Therefore, the development flag has been removed."}}
+
+# Purge can be run against single commands or all commaands. This deletes the entire version directory of a command.
 if ($purge) {Remove-Item $backupdirectory -Recurse -Force -ErrorAction SilentlyContinue; Write-Host -f red "`nDirectory for $cmd has been purged.`n"; return}
 if (-not $validatecommand -or $validatecommand.CommandType -notin 'Function','ExternalScript','Alias') {Write-Host -f red "`nInvalid command: $cmd`n"; return}
 $cmddetails = (Get-Command $cmd).definition; $cmdsourceinfo = (Get-Command $cmd).source; $callcmd = (Get-Command $cmd).displayname; $cmd = $cmd.tolower()
 
-# Append the alias command to the end of the parent function, if the command referenced is an alias.
+# -------------------------------- This is the beginning of the version file creation. -------------------------------- 
+
+# Obtain the command details and artifically build and append the alias command to the end of the parent function, if the command referenced is an alias.
 if ($validatecommand.CommandType -in 'Alias') {$parentfunction = (Get-Command $cmddetails).definition; $truecommand = "$parentfunction`nsal -Name $cmd -Value $cmddetails"; $cmddetails = $truecommand}
 
-# Add the script content to the end, if the command is simply a placeholder for an external script.
+# Add any script content to the end of both the command and the alias, if the command is simply a placeholder for an external script. This uses Regex to determine logical calls to external scripts.
 if ($cmddetails -match '(?i)\$script\w*\s*=\s*["'']?([^"]+\.ps1)[";&.\s]+\$script') {$ps1file = $matches[1]
 if ($ps1file -match '(\$\w+)') {$varName = $matches[1].Substring(1); $varValue = (Get-Variable -Name $varName).Value; $ps1file = $ps1file -replace [regex]::Escape($matches[1]), $varValue}
 if (Test-Path $ps1file) {$ps1Content = Get-Content $ps1file -Raw; $cmddetails += "`n" + ("-" * 100) + "`n" + $ps1Content}}
 
-# Output to screen.
+# Output the command details, with all additions, such as alias and script to the screen, if the -quiet flag is not set.
 if (-not $quiet) {""; Write-Host -f cyan "Command: " -NoNewLine; Write-Host -f yellow $cmd; Write-Host -f cyan "Source: " -NoNewLine; Write-Host -f yellow $cmdsourceinfo; Write-Host -f yellow ("-"*100); Write-Host -f white $cmddetails"`n"; Write-Host -f yellow ("-"*100)}
 
 # Write the file.
 $filename = "$cmd - $(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').backup"; $backup = Join-Path $backupdirectory $filename; New-Item -ItemType Directory $backupdirectory -Force | Out-Null; $cmddetails | Out-File $backup -Force 
 
-# Keep only unique hashes.
+# -------------------------------- This is the end of the version file creation. -------------------------------- 
+
+# Keep only unique hashes. This will also delete the current file that was just created, if the hash for it is identical to a previous version.
 $sha256 = [System.Security.Cryptography.SHA256]::Create(); $files = Get-ChildItem -Path $backupdirectory -File; $hashToFiles = @{}
 foreach ($file in $files) {try {$fileBytes = [System.IO.File]::ReadAllBytes($file.FullName); $fileHashBytes = $sha256.ComputeHash($fileBytes); $fileHash = [System.BitConverter]::ToString($fileHashBytes) -replace '-', ''
 if (-not $hashToFiles.ContainsKey($fileHash)) {$hashToFiles[$fileHash] = @()}; $hashToFiles[$fileHash] += $file}
@@ -44,40 +69,43 @@ catch {Write-Warning "Failed to hash file $($file.FullName): $_"}}
 foreach ($group in $hashToFiles.Values) {$sortedGroup = $group | Sort-Object LastWriteTime
 if ($sortedGroup.Count -gt 1) {$sortedGroup[1..($sortedGroup.Count - 1)] | ForEach-Object {Remove-Item $_.FullName -Force}}}
 
-# Display results of determination.
-if (Test-Path $backup) {if ($quiet) {Write-Host "$backup saved."}	
+# Display results of the hash comparison determination.
+if (Test-Path $backup) {if ($quiet) {Write-Host -f white "$backup saved."}	
 elseif (-not $quiet) {Write-Host -ForegroundColor Green "File $backup saved."; Write-Host -ForegroundColor Yellow ("-" * 100)}}
-if (-not (Test-Path $backup)) {Write-Host -f red "Backup identical to an existing file, skipping creation."}
+if (-not (Test-Path $backup)) {Write-Host -f red "The current backup would be identical to an existing file, therefore the latest version is not being retained."}
 
-# Group files by date and keep only the oldest and newest per day.
-$files = Get-ChildItem -Path $backupdirectory -File | Sort-Object Name; $filesByDate = $files | Group-Object {if ($_ -match '(\d{4}-\d{2}-\d{2})_\d{2}-\d{2}-\d{2}') {$matches[1]}
+# Group files by date and keep only the oldest and newest per day, except when the -dev flag is set, at which point all non-identical hashes will be kept.
+if (-not $dev) {$files = Get-ChildItem -Path $backupdirectory -File | Sort-Object Name; $filesByDate = $files | Group-Object {if ($_ -match '(\d{4}-\d{2}-\d{2})_\d{2}-\d{2}-\d{2}') {$matches[1]}
 else {'unknown'}}
 foreach ($group in $filesByDate) {$sortedGroup = $group.Group | Sort-Object Name
 if ($sortedGroup.Count -gt 2) {$sortedGroup[1..($sortedGroup.Count - 2)] | ForEach-Object {Remove-Item $_.FullName -Force}}}
 
-# Enforce maxhistory count globally by deleting oldest files beyond the set limit.
+# Enforce maxhistory count globally by deleting oldest files beyond the set limit, but also only if the -dev flag is not set.
 $files = Get-ChildItem -Path $backupdirectory -File | Sort-Object LastWriteTime; $excess = $files.Count - $maxhistory
-if ($excess -gt 0) {$files | Select-Object -First $excess | ForEach-Object {Remove-Item $_.FullName -Force}}
+if ($excess -gt 0) {$files | Select-Object -First $excess | ForEach-Object {Remove-Item $_.FullName -Force}}}
 
-# Enumeration
+# Enumerate the versions that exist within the command's version directory, but only if the -quiet flag is not set.
 if (-not $quiet) {Write-Host -f yellow "`nAvailable versions:`n"
 $headers = @("Size", "SHA256", "Last Modified"); $padding = 5; $files = Get-ChildItem -Path $backupdirectory -File
-$rows = foreach ($file in $files) {$hash = Get-FileHash -Path $file.FullName -Algorithm SHA256; [PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hash.Hash; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}
+$rows = foreach ($file in $files) {if ($file.Name -eq '.development_flag') {[PSCustomObject]@{Size = "0 bytes"; SHA256 = ".development_flag was set"; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}
+else {$hash = Get-FileHash -Path $file.FullName -Algorithm SHA256; [PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hash.Hash; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}}
 $widths = @{}; foreach ($header in $headers) {$maxLen = ($rows | ForEach-Object {($_.PSObject.Properties[$header].Value.ToString()).Length;}) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum; $widths[$header] = [Math]::Max($maxLen, $header.Length)}
 $spacer = ' ' * $padding
 $headerLine = ($headers | ForEach-Object {$_.PadRight($widths[$_]);}) -join $spacer; Write-Host $headerLine -ForegroundColor Cyan
 foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -ForegroundColor White}; ""; Write-Host -f yellow ("-"*100); ""}}
 
-# Run version against single command.
-if (-not $all) {archive $cmd $purge $maxhistory $quiet; return}
+# -------------------------------- This is the end of the primary version logic. -------------------------------- 
 
-# Run version against every command.
-if ($all) {$today = [int](Get-Date).day; $ranflag = "$PowerShell\Archive\Development History\.backupallthethings_ran"; $devHistoryPath = "$PowerShell\Archive\Development History"; $zipFile = "$PowerShell\Archive\Retired Functions and Aliases.zip"
-if ($force) {$today = 1}
-if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*sal\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object { $_.Groups[1].Value }}} | Where-Object { $_ -notmatch '-' } | Where-Object {Get-Command $_ -ErrorAction SilentlyContinue} | Sort-Object -Unique | ForEach-Object {archive $_ $purge $maxhistory $quiet}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
+# Run version against a single command.
+if (-not $all) {archive -cmd $cmd -maxhistory $maxhistory -stable:$stable -quiet:$quiet -purge:$purge; return}
+
+# Alternately, run version against every command.
+if ($all) {$today = [int](Get-Date).day; $ranflag = "$PowerShell\Archive\Development History\.backupallversions"; $devHistoryPath = "$PowerShell\Archive\Development History"; $zipFile = "$PowerShell\Archive\Retired Functions and Aliases.zip"
+if ($force) {$today = 1; Remove-Item $ranflag -Force | Out-Null}
+if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*sal\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object { $_.Groups[1].Value }}} | Where-Object { $_ -notmatch '-' } | Where-Object {Get-Command $_ -ErrorAction SilentlyContinue} | Sort-Object -Unique | ForEach-Object {archive -cmd $_ -maxhistory $maxhistory -stable:$stable -quiet:$quiet -purge:$purge}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
 if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-Null}
 
-# Enumerate and compare directories to current assets and archive retired ones.
+# When running version against all commands, enumerate and compare directories to current assets and archive retired ones at the end of the process.
 $currentFunctionsAndAliases = Get-Command -Type Function, Alias | Select-Object -ExpandProperty Name; $existingDirs = Get-ChildItem -Path $devHistoryPath -Directory | Select-Object -ExpandProperty Name; $retiredDirs = $existingDirs | Where-Object {$_ -notin $currentFunctionsAndAliases}
 if ($retiredDirs.Count -gt 2) {Write-Host -f white "The following commands are not present in the current session: " -NoNewLine; $retiredDirs -join ", " | Write-Host -f cyan; Write-Host -f white "This means that there are " -NoNewLine; Write-Host -f green $retiredDirs.Count -NoNewLine; Write-Host -f white " directories to archive. Are you sure you want to continue? " -NoNewLine; font red; $response = Read-Host "(Y/N)"; if ($response -notmatch "(?i)^Y") {font gray; ""; return}}
 font gray; if ($retiredDirs.Count -gt 0) {if (Test-Path $zipFile) {$retiredDirs | ForEach-Object {$dirPath = Join-Path $devHistoryPath $_; if (-not (Test-Path $dirPath)) {Write-Host "Warning: Directory not found: $dirPath"}
@@ -92,21 +120,27 @@ Export-ModuleMember -Function version
 <#
 ## version
 
-This script allows you to backup a command that you are currently modifying to the user's "PowerShell\Archive\Development History" directory.
+Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -all -help
 
-This differs from scripts and modules in that it only keeps copies of the command logic.
+This script allows you to backup a command that you are currently modifying to your "PowerShell\Archive\Development History" directory.
 
-If the user runs version against an alias, the script will backup the logic of the parent command and append the logic required to create the alias to the end of it.
+This differs from backing up scripts and modules in that it only keeps copies of the command logic, making it much easier to keep track of the iterative development of individual components.
+	• If executed against an alias, the script will backup the logic of the parent command and append the logic required to create the alias to the end of it.
+	• If the command is simply a reference to an external script, the function will attempt to obtain the logic of that script and also append it to the end.
 
-Also, if the command, or parent command in the case of an alias, is simply a reference to an external script, this function will also append the logic of that script to the bottom of the file, separated by a hyphenated line.
+The -purge feature will delete all version copies of the command in question and the directory in which they reside.
 
-There is also a -quiet option to reduce the screen output.
+The # (maxhistory) feature sets the maximum number of versions to keep of the command in question. The default is 10.
+	• This feature uses logical assumptions to determine development dates, by keeping the first and last versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that the major and most relevant revisions are kept over minor and historically outdated versions.
 
-By default, the script is set to prune older copies after 10 revisions, but this can be modified and you can use the -purge or # options, as required.
+The -dev feature disables all pruning by date or volume until the devflag is turned off. This overrides the # (maxhistory) feature.
 
-The prune by # feature uses logical assumptions to determine development dates, by keeping the oldest and latest versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that major revisions are kept over minor ones.
+The -stable flag disables the -dev mode, indicating that normal pruning and history retention can resume.
 
-It also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older one.
+The -quiet option will reduce the screen output; reduce, not completely eliminate.
 
-The -all switch will enumerate a list of all functions and aliases available as a result of the current user's profile and runs the command against all of them.
+The -all switch will run the command against all of the commands available as a result of the current user's profile.
+	• At the end of the process, the script will determine if any commands no longer exist and archive them in a ZIP file for future reference.
+
+This function also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older version. So, keep that in mind.
 ##>
