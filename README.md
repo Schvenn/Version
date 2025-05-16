@@ -1,20 +1,29 @@
 # Version
-Powershell module to create intelligent backups of functions and aliases during development
+Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -all -help
 
-This script allows you to backup a command that you are currently modifying to the user's "PowerShell\Archive\Development History" directory.
+This script allows you to backup a command that you are currently modifying to your "PowerShell\Archive\Development History" directory.
 
-This differs from scripts and modules in that it only keeps copies of the command logic.
+This differs from backing up scripts and modules in that it only keeps copies of the command logic, making it much easier to keep track of the iterative development of individual components.
 
-If the user runs version against an alias, the script will backup the logic of the parent command and append the logic required to create the alias to the end of it.
+	• If executed against an alias, the script will backup the logic of the parent command and append the logic required to create the alias to the end of it.
+	• If the command is simply a reference to an external script, the function will attempt to obtain the logic of that script and also append it to the end.
 
-Also, if the command, or parent command in the case of an alias, is simply a reference to an external script, this function will also append the logic of that script to the bottom of the file, separated by a hyphenated line.
+The -purge feature will delete all version copies of the command in question and the directory in which they reside.
 
-There is also a -quiet option to reduce the screen output.
+The # (maxhistory) feature sets the maximum number of versions to keep of the command in question. The default is 10.
 
-By default, the script is set to prune older copies after 10 revisions, but this can be modified and you can use the -purge or ## options, as required.
+	• This feature uses logical assumptions to determine development dates, by keeping the first and last versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that the major and most relevant revisions are kept over minor and historically outdated versions.
 
-The prune by ## feature uses logical assumptions to determine development dates, by keeping the oldest and latest versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that major revisions are kept over minor ones.
+The -dev feature disables all pruning by date or volume until the devflag is turned off. This overrides the # (maxhistory) feature.
 
-It also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older one.
+The -stable flag disables the -dev mode, indicating that normal pruning and history retention can resume.
 
-The -all switch will enumerate a list of all functions and aliases available as a result of the current user's profile and runs the command against all of them.
+The -quiet option will reduce the screen output; reduce, not completely eliminate.
+
+The -all switch will run the command against all of the commands available as a result of the current user's profile.
+
+	• At the end of the process, the script will determine if any commands no longer exist and archive them in a ZIP file for future reference.
+
+This function also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. 
+
+	• This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older version. So, keep that in mind.
