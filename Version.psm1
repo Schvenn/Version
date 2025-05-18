@@ -165,7 +165,7 @@ if ($sortedGroup.Count -gt 1) {$sortedGroup[1..($sortedGroup.Count - 1)] | ForEa
 # Display results of the hash comparison determination.
 if (Test-Path $backup) {if ($quiet) {Write-Host -f white "$backup saved."}	
 elseif (-not $quiet) {Write-Host -f green "File $backup saved."; Write-Host -f yellow ("-" * 100)}}
-if (-not (Test-Path $backup)) {Write-Host -f red "The current backup would be identical to an existing file, therefore the latest version is not being retained."}
+if (-not (Test-Path $backup)) {Write-Host -f white "$cmd`: " -n; Write-Host -f red "The current backup would be identical to an existing file, therefore the latest version is not being retained."}
 
 # Group files by date and keep only the oldest and newest per day, except when the -dev flag is set, at which point all non-identical hashes will be kept.
 if (-not $dev -and -not (Test-Path $devflag)) {$files = Get-ChildItem -Path $backupdirectory -Filter *.backup -File | Sort-Object Name; $filesByDate = $files | Group-Object {if ($_ -match '(\d{4}-\d{2}-\d{2})_\d{2}-\d{2}-\d{2}') {$matches[1]}
