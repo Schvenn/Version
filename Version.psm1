@@ -6,12 +6,12 @@ if ($dev -and (-not $cmd)) {Write-Host -f red "`nYou must specify a single comma
 if ($dev -and $stable) {Write-Host -f red "`nA command can only be under development or a stable release, not both.`n"; return}
 
 # Generate the help sections from the comments section of the script.
-if ($help) {function scripthelp ($section) {""; Write-Host -ForegroundColor Yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -ForegroundColor Yellow; Write-Host -ForegroundColor Yellow ("-" * 100)
-if ($lines.Count -gt 1) {$lines[1] | Out-String | Out-Host -Paging}; Write-Host -ForegroundColor Yellow ("-" * 100)}
+if ($help) {function scripthelp ($section) {""; Write-Host -f yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -f yellow; Write-Host -f yellow ("-" * 100)
+if ($lines.Count -gt 1) {$lines[1] | Out-String | Out-Host -Paging}; Write-Host -f yellow ("-" * 100)}
 $scripthelp = Get-Content -Raw -Path $PSCommandPath; $sections = [regex]::Matches($scripthelp, "(?im)^## (.+?)(?=\r?\n)")
-if ($sections.Count -eq 1) {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help:" -ForegroundColor Cyan; scripthelp $sections[0].Groups[1].Value; ""; return}
+if ($sections.Count -eq 1) {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help:" -f cyan; scripthelp $sections[0].Groups[1].Value; ""; return}
 $selection = $null
-do {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help Sections:`n" -ForegroundColor Cyan; for ($i = 0; $i -lt $sections.Count; $i++) {
+do {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help Sections:`n" -f cyan; for ($i = 0; $i -lt $sections.Count; $i++) {
 "{0}: {1}" -f ($i + 1), $sections[$i].Groups[1].Value}
 if ($selection) {scripthelp $sections[$selection - 1].Groups[1].Value}
 $input = Read-Host "`nEnter a section number to view"
@@ -22,16 +22,16 @@ while ($true); return}
 
 # Usage Error handling for no $cmd.
 if (-not $cmd -and -not $all) {Write-Host -f cyan "`nUsage: version `"command`" -purge #(maxhistory) -(dev/stable) -quiet -all -force -(compare -savedifferences -differences) -help`n"
-Write-Host -f yellow "-purge " -NoNewLine; Write-Host -f white "deletes all histories of a command."
-Write-Host -f yellow "# " -NoNewLine; Write-Host -f white "sets the maximum number of copies to retain; 10 being the default."
-Write-Host -f yellow "-dev " -NoNewLine; Write-Host -f white "marks the command as being under development, which temporarily turns off pruning, but -stable turns it back on."
-Write-Host -f yellow "-quiet " -NoNewLine; Write-Host -f white "reduces screen output to a minimum."
-Write-Host -f yellow "`n-all " -NoNewLine; Write-Host -f white "backs up every function and alias available as a result of the current user profile."
-Write-Host -f yellow "	-force " -NoNewLine; Write-Host -f white "forces a refresh of the -all backup, even if not the first of the month."
-Write-Host -f yellow "`n-compare " -NoNewLine; Write-Host -f white "compares different versions of the backup file with each other."
-Write-Host -f yellow "	-differences " -NoNewLine; Write-Host -f white "shows only lines that are different." 
-Write-Host -f yellow "	-savedifferences " -NoNewLine; Write-Host -f white "saves the differences comparison to an output file: " -NoNewLine; Write-Host -f green "command - yyyy-mm-dd_hh-mm-ss & yyyy-mm-dd_hh-mm-ss.differences." 
-; Write-Host -f yellow "`n-help " -NoNewLine; Write-Host -f white "provides in depth instructions about this function.`n"; return}
+Write-Host -f yellow "-purge " -n; Write-Host -f white "deletes all histories of a command."
+Write-Host -f yellow "# " -n; Write-Host -f white "sets the maximum number of copies to retain; 10 being the default."
+Write-Host -f yellow "-dev " -n; Write-Host -f white "marks the command as being under development, which temporarily turns off pruning, but -stable turns it back on."
+Write-Host -f yellow "-quiet " -n; Write-Host -f white "reduces screen output to a minimum."
+Write-Host -f yellow "`n-all " -n; Write-Host -f white "backs up every function and alias available as a result of the current user profile."
+Write-Host -f yellow "	-force " -n; Write-Host -f white "forces a refresh of the -all backup, even if not the first of the month."
+Write-Host -f yellow "`n-compare " -n; Write-Host -f white "compares different versions of the backup file with each other."
+Write-Host -f yellow "	-differences " -n; Write-Host -f white "shows only lines that are different." 
+Write-Host -f yellow "	-savedifferences " -n; Write-Host -f white "saves the differences comparison to an output file: " -n; Write-Host -f green "command - yyyy-mm-dd_hh-mm-ss & yyyy-mm-dd_hh-mm-ss.differences." 
+; Write-Host -f yellow "`n-help " -n; Write-Host -f white "provides in depth instructions about this function.`n"; return}
 
 # Ensure devflag is created or exists for single commands, but not -all.
 if ($dev -and $cmd -and -not $all) {if (Test-Path $devflag) {$devstatus = "The command $cmd is already flagged as being under development. History pruning is therefore curtailed.`n"}
@@ -43,7 +43,7 @@ if ($dev -and $all) {Write-Host -f red "`nYou can only set the -dev flag for one
 if ($cmd -and ($compare -or $differences -or $savedifferences)) {
 # Error checking.
 $powershell=Split-Path $profile; $backupFolder=Join-Path $powershell "Archive\Development History\$cmd"
-if(-not(Test-Path $backupFolder)) {Write-Host "$cmd version files not found at: $backupFolder" -f Red; return}
+if(-not(Test-Path $backupFolder)) {Write-Host "$cmd version files not found at: $backupFolder" -f red; return}
 
 $backupFiles=Get-ChildItem -Path $backupFolder -Filter "$cmd *.backup" | Sort-Object LastWriteTime -Descending
 if($backupFiles.Count -lt 2) {Write-Host "Not enough previous versions found to compare (need at least 2)." -f yellow; return}
@@ -66,7 +66,7 @@ $previous = $backupFiles[[int]$olderChoice - 1]}}
 
 # Obtain content.
 $oldLines = Get-Content $previous.FullName; $newLines = Get-Content $newest.FullName; $maxLines = [Math]::Max($oldLines.Count, $newLines.Count)
-""; Write-Host -f yellow ("-" * 100); Write-Host -f cyan "Comparing previous versions:"; Write-Host -f yellow "Recent: " -NoNewLine; Write-Host -f white "$($newest.Name)"; Write-Host -f green "Older: " -NoNewLine; Write-Host -f white "$($previous.Name)"
+""; Write-Host -f yellow ("-" * 100); Write-Host -f cyan "Comparing previous versions:"; Write-Host -f yellow "Recent: " -n; Write-Host -f white "$($newest.Name)"; Write-Host -f green "Older: " -n; Write-Host -f white "$($previous.Name)"
 
 # Defined basic fuzzy match ratio.
 function Get-MatchRatio {param ($a, $b)
@@ -84,11 +84,11 @@ $oldLine = if ($oldExists) {$oldLines[$i]} else {""}
 $newLine = if ($newExists) {$newLines[$i]} else {""}
 $ratio = Get-MatchRatio $oldLine $newLine
 if ($oldExists) {$oldColor = if ($ratio -eq 1 -or ($newExists -and $newLines -contains $oldLine)) {"White"} else {"Yellow"}
-Write-Host ("{0}: Old: {1}" -f ($i+1), $oldLine) -ForegroundColor $oldColor}
+Write-Host ("{0}: Old: {1}" -f ($i+1), $oldLine) -f $oldColor}
 if ($newExists) {$newColor = if ($ratio -eq 1 -or ($oldExists -and $oldLines -contains $newLine)) {"White"} else {"Yellow"}
-Write-Host ("{0}: New: {1}" -f ($i+1), $newLine) -ForegroundColor $newColor}
-if ($oldExists -and $newExists) {Write-Host ("-" * 100) -ForegroundColor Yellow}}
-Write-Host ""; Write-Host ("-" * 100) -ForegroundColor Yellow; Write-Host ""}
+Write-Host ("{0}: New: {1}" -f ($i+1), $newLine) -f $newColor}
+if ($oldExists -and $newExists) {Write-Host ("-" * 100) -f yellow}}
+Write-Host ""; Write-Host ("-" * 100) -f yellow; Write-Host ""}
 
 if ($differences -or $savedifferences) {$differenceOutput = @(); $uniqueOld = [System.Collections.Generic.List[string]]::new(); $uniqueNew = [System.Collections.Generic.List[string]]::new()
 for ($i = 0; $i -lt $oldLines.Count; $i++) {$oldLine = $oldLines[$i].Trim()
@@ -101,9 +101,9 @@ if ($uniqueOld.Count -eq 0 -and $uniqueNew.Count -eq 0) {Write-Host -f green "`n
 $script:differenceOutput = @()
 function Print-With-Gaps($lines, $color) {$prevNum = 0
 foreach ($line in $lines) {if ($line -match '^(\d+):') {$currNum = [int]$matches[1]
-if ($prevNum -ne 0 -and ($currNum -gt $prevNum + 1)) {Write-Host ("-" * 100) -ForegroundColor $color; $script:differenceOutput += ("-" * 100)}
+if ($prevNum -ne 0 -and ($currNum -gt $prevNum + 1)) {Write-Host ("-" * 100) -f $color; $script:differenceOutput += ("-" * 100)}
 $prevNum = $currNum}
-Write-Host $line -ForegroundColor $color; $script:differenceOutput += $line}}
+Write-Host $line -f $color; $script:differenceOutput += $line}}
 
 # Add header lines to output
 Write-Host ""; Write-Host -f yellow ("-" * 100); Write-Host -f yellow "Unique Differences Between Files"; Write-Host -f yellow ("-" * 100); Write-Host ""
@@ -112,7 +112,7 @@ $script:differenceOutput += ""; $script:differenceOutput += ("-" * 100); $script
 Print-With-Gaps $uniqueOld 'gray'
 if ($uniqueOld.Count -gt 0 -and $uniqueNew.Count -gt 0) {Write-Host ""; Write-Host -f yellow ("-" * 100); Write-Host ""; $script:differenceOutput += ""; $script:differenceOutput += ("-" * 100); $script:differenceOutput += ""}
 Print-With-Gaps $uniqueNew 'white'
-Write-Host ""; Write-Host ("-" * 100) -ForegroundColor Yellow; Write-Host ""; $script:differenceOutput += ""; $script:differenceOutput += ("-" * 100); $script:differenceOutput += ""
+Write-Host ""; Write-Host ("-" * 100) -f yellow; Write-Host ""; $script:differenceOutput += ""; $script:differenceOutput += ("-" * 100); $script:differenceOutput += ""
 
 # Save the differences to file if requested
 if ($savedifferences) {$oldStamp = $previous.Name -replace "^$cmd - (\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.backup", '$1'; $newStamp = $newest.Name -replace "^$cmd - (\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.backup", '$1'; $diffFile = Join-Path $backupFolder "$cmd - $oldStamp & $newStamp.differences"; $script:differenceOutput | Out-File -FilePath $diffFile -Encoding UTF8; Write-Host -f cyan "Differences saved to: $diffFile`n"}}; return}
@@ -142,7 +142,7 @@ if ($ps1file -match '(\$\w+)') {$varName = $matches[1].Substring(1); $varValue =
 if (Test-Path $ps1file) {$ps1file = Resolve-Path $ps1file -ErrorAction SilentlyContinue; $ps1Content = Get-Content $ps1file -Raw; $cmddetails += "`n" + ("-" * 100) + "`n" + $ps1Content}}
 
 # Output the command details, with all additions, such as alias and script to the screen, if the -quiet flag is not set.
-if (-not $quiet) {""; Write-Host -f cyan "Command: " -NoNewLine; Write-Host -f yellow $cmd; Write-Host -f cyan "Source: " -NoNewLine; Write-Host -f yellow $cmdsourceinfo; Write-Host -f yellow ("-"*100); Write-Host -f white $cmddetails"`n"; Write-Host -f yellow ("-"*100)}
+if (-not $quiet) {""; Write-Host -f cyan "Command: " -n; Write-Host -f yellow $cmd; Write-Host -f cyan "Source: " -n; Write-Host -f yellow $cmdsourceinfo; Write-Host -f yellow ("-"*100); Write-Host -f white $cmddetails"`n"; Write-Host -f yellow ("-"*100)}
 
 # Ensure devflag is removed or not set. This can be run against single commands or all commands.
 if ($devstatus.length -gt 1) {Write-Host -f cyan $devstatus}
@@ -164,7 +164,7 @@ if ($sortedGroup.Count -gt 1) {$sortedGroup[1..($sortedGroup.Count - 1)] | ForEa
 
 # Display results of the hash comparison determination.
 if (Test-Path $backup) {if ($quiet) {Write-Host -f white "$backup saved."}	
-elseif (-not $quiet) {Write-Host -ForegroundColor Green "File $backup saved."; Write-Host -ForegroundColor Yellow ("-" * 100)}}
+elseif (-not $quiet) {Write-Host -f green "File $backup saved."; Write-Host -f yellow ("-" * 100)}}
 if (-not (Test-Path $backup)) {Write-Host -f red "The current backup would be identical to an existing file, therefore the latest version is not being retained."}
 
 # Group files by date and keep only the oldest and newest per day, except when the -dev flag is set, at which point all non-identical hashes will be kept.
@@ -184,8 +184,8 @@ $rows = foreach ($file in $files) {if ($file.Name -eq '.development_flag') {[PSC
 else {$hash = Get-FileHash -Path $file.FullName -Algorithm SHA256; [PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hash.Hash; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}}
 $widths = @{}; foreach ($header in $headers) {$maxLen = ($rows | ForEach-Object {($_.PSObject.Properties[$header].Value.ToString()).Length;}) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum; $widths[$header] = [Math]::Max($maxLen, $header.Length)}
 $spacer = ' ' * $padding
-$headerLine = ($headers | ForEach-Object {$_.PadRight($widths[$_]);}) -join $spacer; Write-Host $headerLine -ForegroundColor Cyan
-foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -ForegroundColor White}; ""; Write-Host -f yellow ("-"*100); ""}}
+$headerLine = ($headers | ForEach-Object {$_.PadRight($widths[$_]);}) -join $spacer; Write-Host $headerLine -f cyan
+foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -f white}; ""; Write-Host -f yellow ("-"*100); ""}}
 
 # -------------------------------- This is the end of the primary version logic. -------------------------------------- 
 
@@ -200,13 +200,13 @@ if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-N
 
 # When running version against all commands, enumerate and compare directories to current assets and archive retired ones at the end of the process.
 $currentFunctionsAndAliases = Get-Command -Type Function, Alias | Select-Object -ExpandProperty Name; $existingDirs = Get-ChildItem -Path $devHistoryPath -Directory | Select-Object -ExpandProperty Name; $retiredDirs = $existingDirs | Where-Object {$_ -notin $currentFunctionsAndAliases}
-if ($retiredDirs.Count -gt 2) {Write-Host -f white "The following commands are not present in the current session: " -NoNewLine; $retiredDirs -join ", " | Write-Host -f cyan; Write-Host -f white "This means that there are " -NoNewLine; Write-Host -f green $retiredDirs.Count -NoNewLine; Write-Host -f white " directories to archive. Are you sure you want to continue? " -NoNewLine; font red; $response = Read-Host "(Y/N)"; if ($response -notmatch "(?i)^Y") {font gray; ""; return}}
-font gray; if ($retiredDirs.Count -gt 0) {if (Test-Path $zipFile) {$retiredDirs | ForEach-Object {$dirPath = Join-Path $devHistoryPath $_; if (-not (Test-Path $dirPath)) {Write-Host "Warning: Directory not found: $dirPath"}
-else {Compress-Archive -Path $dirPath -DestinationPath $zipFile -Update}}}
-else {$retiredDirs | ForEach-Object {$dirPath = Join-Path $devHistoryPath $_
-Compress-Archive -Path $dirPath -DestinationPath $zipFile}}
-Start-Sleep -Seconds 1; Get-ChildItem -Path $dirPath -Recurse | Remove-Item -Force -Recurse; Remove-Item -Path $dirPath -Force}
-if ($retiredDirs.Count -gt 0) {Write-Host -f yellow "Retired Functions and Aliases archive updated with the following directories: " -NoNewLine; $retiredDirs -join ", " | Write-Host -f white}}}
+if ($retiredDirs.Count -gt 2) {Write-Host -f white "The following commands are not present in the current session: " -n; $retiredDirs -join ", " | Write-Host -f cyan; Write-Host -f white "This means that there are " -n; Write-Host -f green $retiredDirs.Count -n; Write-Host -f white " directories to archive. Are you sure you want to continue? " -n; [console]::foregroundcolor = "red"; $response = Read-Host "(Y/N)"; if ($response -notmatch "(?i)^Y") {[console]::foregroundcolor = "gray"; ""; return}}
+[console]::foregroundcolor = "gray"; if ($retiredDirs.Count -gt 0) {$retiredDirs | ForEach-Object {$dirPath = Join-Path $devHistoryPath $_; 
+if (-not (Test-Path $dirPath)) {Write-Host "Warning: Directory not found: $dirPath"}
+else {if (Test-Path $zipFile) {Compress-Archive -Path $dirPath -DestinationPath $zipFile -Update}
+elseif (-not (Test-Path $zipFile)){Compress-Archive -Path $dirPath -DestinationPath $zipFile}
+Remove-Item -Path $dirPath -Recurse -Force}}
+Write-Host -f yellow "Retired Functions and Aliases archive updated with the following directories: " -n; $retiredDirs -join ", " | Write-Host -f white}}}
 
 Export-ModuleMember -Function version
 
