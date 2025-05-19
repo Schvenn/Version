@@ -128,7 +128,7 @@ $backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\
 
 # Purge can be run against single commands or all commaands. This deletes the entire version directory of a command.
 if ($purge) {Remove-Item $backupdirectory -Recurse -Force -ErrorAction SilentlyContinue; Write-Host -f red "`nDirectory for $cmd has been purged.`n"; return}
-if (-not $validatecommand -or $validatecommand.CommandType -notin 'Function','ExternalScript','Alias') {Write-Host -f red "`nInvalid command: $cmd`n"; return}
+if (-not $validatecommand -or $validatecommand.CommandType -notin 'Function','ExternalScript','Alias') {Write-Host -f gray "$cmd`: " -n; Write-Host -f darkgray "is not an exported command. Skipping."; return}
 $cmddetails = (Get-Command $cmd).definition; $cmdsourceinfo = (Get-Command $cmd).source; $callcmd = (Get-Command $cmd).displayname; $cmd = $cmd.tolower()
 
 # -------------------------------- This is the beginning of the version file creation. --------------------------------
@@ -195,7 +195,7 @@ if (-not $all) {archive -cmd $cmd -maxhistory $maxhistory -stable:$stable -quiet
 # Alternately, run version against every command.
 if ($all) {$today = [int](Get-Date).day; $ranflag = "$PowerShell\Archive\Development History\.backupallversions"; $devHistoryPath = "$PowerShell\Archive\Development History"; $zipFile = "$PowerShell\Archive\Retired Functions and Aliases.zip"
 if ($force) {$today = 1; try {Remove-Item $ranflag -Force | Out-Null} catch {""}}
-if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*sal\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object {$_.Groups[1].Value}}} | Where-Object {$_ -notmatch '-'} | Where-Object {Get-Command $_ -ErrorAction SilentlyContinue} | Sort-Object -Unique | ForEach-Object {archive -cmd $_ -maxhistory $maxhistory -stable:$stable -quiet:$quiet -purge:$purge}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
+if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*(sal|set-alias)\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object {$fn = if ($_.Groups.Count -gt 2) {$_.Groups[2].Value} else {$_.Groups[1].Value}; if (-not ($fn -eq 'archive' -and $scriptPath -eq $MyInvocation.MyCommand.Path)) {$fn}}}} | Sort-Object -Unique | ForEach-Object {archive -cmd $_ -maxhistory $maxhistory -stable:$stable -quiet:$quiet -purge:$purge}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
 if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-Null}
 
 # When running version against all commands, enumerate and compare directories to current assets and archive retired ones at the end of the process.
