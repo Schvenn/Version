@@ -34,8 +34,8 @@ Write-Host -f yellow "	-savedifferences " -n; Write-Host -f white "saves the dif
 ; Write-Host -f yellow "`n-help " -n; Write-Host -f white "provides in depth instructions about this function.`n"; return}
 
 # Ensure devflag is created or exists for single commands, but not -all.
-if ($dev -and $cmd -and -not $all) {if (Test-Path $devflag) {$devstatus = "The command $cmd is already flagged as being under development. History pruning is therefore curtailed.`n"}
-else {New-Item -Path $devflag -ItemType File -Force | Out-Null; $devstatus = "The command $cmd is now flagged as being under development. History pruning is therefore curtailed.`n"}}
+if ($dev -and $cmd -and -not $all) {if (Test-Path $devflag) {$devstatus = "The command $cmd is already flagged as being under development. History pruning is therefore curtailed."}
+else {New-Item -Path $devflag -ItemType File -Force | Out-Null; $devstatus = "The command $cmd is now flagged as being under development. History pruning is therefore curtailed."}}
 if ($dev -and $all) {Write-Host -f red "`nYou can only set the -dev flag for one command at a time.`n"; return}
 
 # -------------------------------- This is the beginning of the compare logic. ---------------------------------------- 
@@ -146,8 +146,8 @@ if (-not $quiet) {""; Write-Host -f cyan "Command: " -n; Write-Host -f yellow $c
 
 # Ensure devflag is removed or not set. This can be run against single commands or all commands.
 if ($devstatus.length -gt 1) {Write-Host -f cyan $devstatus}
-if ($stable) {if (-not (Test-Path $devflag)) {Write-Host -f cyan "The command `"$cmd`" was not flagged as being under development. Therefore, no adjustment was necessary.`n"}
-elseif (Test-Path $devflag) {Remove-Item $devflag -Force; Write-Host -f cyan "The command `"$cmd`" is now flagged as being a stable release. Therefore, the development flag has been removed.`n"}}
+if ($stable) {if (-not (Test-Path $devflag)) {Write-Host -f cyan "The command `"$cmd`" was not flagged as being under development. Therefore, no adjustment was necessary."}
+elseif (Test-Path $devflag) {Remove-Item $devflag -Force; Write-Host -f cyan "The command `"$cmd`" is now flagged as being a stable release. Therefore, the development flag has been removed."}}
 
 # Write the file.
 $filename = "$cmd - $(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').backup"; $backup = Join-Path $backupdirectory $filename; New-Item -ItemType Directory $backupdirectory -Force | Out-Null; $cmddetails | Out-File $backup -Force 
@@ -194,7 +194,7 @@ if (-not $all) {archive -cmd $cmd -maxhistory $maxhistory -stable:$stable -quiet
 
 # Alternately, run version against every command.
 if ($all) {$today = [int](Get-Date).day; $ranflag = "$PowerShell\Archive\Development History\.backupallversions"; $devHistoryPath = "$PowerShell\Archive\Development History"; $zipFile = "$PowerShell\Archive\Retired Functions and Aliases.zip"
-if ($force) {$today = 1; Remove-Item $ranflag -Force | Out-Null}
+if ($force) {$today = 1; try {Remove-Item $ranflag -Force | Out-Null} catch {""}}
 if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*sal\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object {$_.Groups[1].Value}}} | Where-Object {$_ -notmatch '-'} | Where-Object {Get-Command $_ -ErrorAction SilentlyContinue} | Sort-Object -Unique | ForEach-Object {archive -cmd $_ -maxhistory $maxhistory -stable:$stable -quiet:$quiet -purge:$purge}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
 if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-Null}
 
