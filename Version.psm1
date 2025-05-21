@@ -23,6 +23,7 @@ while ($true); return}
 # Call -list.
 if ($list) {$root = "$powershell\archive\development history"
 
+$totalDirs = 0
 $results = Get-ChildItem -Path $root -Directory | ForEach-Object {$dir = $_.FullName; $backupFiles = Get-ChildItem -Path $dir -Filter *.backup -File; $count = $backupFiles.Count
 $oldest = if ($count) {($backupFiles | Sort-Object LastWriteTime)[0].LastWriteTime.ToString("yyyy-MM-dd")} else {"-"}
 $newest = if ($count) {($backupFiles | Sort-Object LastWriteTime -Descending)[0].LastWriteTime.ToString("yyyy-MM-dd")} else {"-"}
@@ -43,6 +44,7 @@ if ($hasScriptHeader) {break}}
 if ($hasScriptHeader) {$type = "script"} elseif ($hasAlias) {$type = "alias"} else {$type = ""}
 
 # Output.
+$totalDirs++
 [PSCustomObject]@{Directory = $_.Name; Files = $count; Oldest = $oldest; Newest = $newest; Type = $type; Development = $devflag}}
 Write-Host ("{0,-30} {1,6} {2,8} {3,12} {4,8} {5,17}" -f "`nDirectory", "Files", "Oldest", "Newest", "Type", "Development") -f white; Write-Host -f cyan ("-" * 100)
 foreach ($row in $results) {switch ($row.Type) {"script" {$colour = "darkcyan"}; "alias" {$colour = "cyan"}; default {$colour = "white"}}
@@ -56,9 +58,10 @@ $oldestDate = if ($allDates) {($allDates | Sort-Object)[0].ToString('yyyy-MM-dd'
 $newestDate = if ($allDates) {($allDates | Sort-Object)[-1].ToString('yyyy-MM-dd')}
 $typeCount = ($results | Where-Object {$_.Type -in @('alias','script')}).Count
 $devCount = ($results | Where-Object {$_.Development -eq 'Yes'}).Count
+$typeSummary = "Totals: $totalDirs"
 
 # Total row.
-$labelCol  = "{0,-30}" -f "Totals"; $filesCol = "{0,5}" -f $totalFiles; $oldCol = "{0,12}" -f $oldestDate; $newCol = "{0,12}" -f $newestDate; $typeCol = "{0,4}" -f $typeCount; $devCol = "{0,8}" -f $devCount
+$labelCol  = "{0,-30}" -f $typeSummary; $filesCol = "{0,5}" -f $totalFiles; $oldCol = "{0,12}" -f $oldestDate; $newCol = "{0,12}" -f $newestDate; $typeCol = "{0,4}" -f $typeCount; $devCol = "{0,8}" -f $devCount
 Write-Host -f cyan ("-" * 100); Write-Host -f white $labelCol -n; Write-Host -f white " $filesCol" -n; Write-Host -f darkgray " $oldCol" -n; Write-Host -f green " $newCol" -n; Write-Host -f white " $typeCol" -n; Write-Host -f white " $devCol"; Write-Host -f cyan ("-" * 100); ""; return}
 
 # Usage Error handling for no $cmd.
