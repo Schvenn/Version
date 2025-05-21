@@ -1,4 +1,4 @@
-function version ($cmd, [int]$maxhistory = 10, [switch]$dev, [switch]$stable, [switch]$quiet, [switch]$all, [switch]$force, [switch]$purge, [switch]$compare, [switch]$savedifferences, [switch]$differences, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
+function version ($cmd, [int]$maxhistory = 5, [switch]$dev, [switch]$stable, [switch]$quiet, [switch]$all, [switch]$force, [switch]$purge, [switch]$compare, [switch]$savedifferences, [switch]$differences, [switch]$list, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
 
 # Ensure -dev is being called correctly for only single commands.
 $backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $devflag = Join-Path $backupdirectory ".development_flag"
@@ -20,8 +20,49 @@ if ($index -ge 1 -and $index -le $sections.Count) {$selection = $index}
 else {$selection = $null}} else {""; return}}
 while ($true); return}
 
+# Call -list.
+if ($list) {$root = "$powershell\archive\development history"
+
+$results = Get-ChildItem -Path $root -Directory | ForEach-Object {$dir = $_.FullName; $backupFiles = Get-ChildItem -Path $dir -Filter *.backup -File; $count = $backupFiles.Count
+$oldest = if ($count) {($backupFiles | Sort-Object LastWriteTime)[0].LastWriteTime.ToString("yyyy-MM-dd")} else {"-"}
+$newest = if ($count) {($backupFiles | Sort-Object LastWriteTime -Descending)[0].LastWriteTime.ToString("yyyy-MM-dd")} else {"-"}
+$devflag = if (Test-Path "$dir\.development_flag") {"Yes"}
+
+# Alias detection.
+$hasAlias = $false
+foreach ($file in $backupFiles) {if (Select-String -Path $file.FullName -Pattern '^(sal|set-alias)\s') {$hasAlias = $true; break}}
+
+# Script marker detection.
+$hasScriptHeader = $false
+foreach ($file in Get-ChildItem -Path $dir -File) {$lines = Get-Content $file.FullName
+for ($i = 0; $i -lt $lines.Count; $i++) {if ($lines[$i] -match 'script.*ps1.*script') {for ($j = $i + 1; $j -lt $lines.Count; $j++) {if ($lines[$j] -match '^[-]{100,}$') {$hasScriptHeader = $true; break}}}
+if ($hasScriptHeader) {break}}
+if ($hasScriptHeader) {break}}
+
+# Set type string.
+if ($hasScriptHeader) {$type = "script"} elseif ($hasAlias) {$type = "alias"} else {$type = ""}
+
+# Output.
+[PSCustomObject]@{Directory = $_.Name; Files = $count; Oldest = $oldest; Newest = $newest; Type = $type; Development = $devflag}}
+Write-Host ("{0,-30} {1,6} {2,8} {3,12} {4,8} {5,17}" -f "`nDirectory", "Files", "Oldest", "Newest", "Type", "Development") -f white; Write-Host -f cyan ("-" * 100)
+foreach ($row in $results) {switch ($row.Type) {"script" {$colour = "darkcyan"}; "alias" {$colour = "cyan"}; default {$colour = "white"}}
+if ($row.Development -eq 'Yes') {$colour = 'yellow'}
+Write-Host ("{0,-30} {1,5} {2,12} {3,12} {4,-10} {5,-12}" -f $row.Directory, $row.Files, $row.Oldest, $row.Newest, $row.Type, $row.Development) -f $colour}
+
+# Summary.
+$totalFiles = ($results | Measure-Object -Property Files -Sum).Sum
+$allDates = $results | Where-Object {$_.Oldest -ne "-"} | ForEach-Object {[datetime]::ParseExact($_.Oldest, 'yyyy-MM-dd', $null); [datetime]::ParseExact($_.Newest, 'yyyy-MM-dd', $null)}
+$oldestDate = if ($allDates) {($allDates | Sort-Object)[0].ToString('yyyy-MM-dd')}
+$newestDate = if ($allDates) {($allDates | Sort-Object)[-1].ToString('yyyy-MM-dd')}
+$typeCount = ($results | Where-Object {$_.Type -in @('alias','script')}).Count
+$devCount = ($results | Where-Object {$_.Development -eq 'Yes'}).Count
+
+# Total row.
+$labelCol  = "{0,-30}" -f "Totals"; $filesCol = "{0,5}" -f $totalFiles; $oldCol = "{0,12}" -f $oldestDate; $newCol = "{0,12}" -f $newestDate; $typeCol = "{0,4}" -f $typeCount; $devCol = "{0,8}" -f $devCount
+Write-Host -f cyan ("-" * 100); Write-Host -f white $labelCol -n; Write-Host -f white " $filesCol" -n; Write-Host -f darkgray " $oldCol" -n; Write-Host -f green " $newCol" -n; Write-Host -f white " $typeCol" -n; Write-Host -f white " $devCol"; Write-Host -f cyan ("-" * 100); ""; return}
+
 # Usage Error handling for no $cmd.
-if (-not $cmd -and -not $all) {Write-Host -f cyan "`nUsage: version `"command`" -purge #(maxhistory) -(dev/stable) -quiet -all -force -(compare -savedifferences -differences) -help`n"
+if (-not $cmd -and -not $all) {Write-Host -f cyan "`nUsage: version `"command`" -purge #(maxhistory) -(dev/stable) -quiet -all -force -(compare -savedifferences -differences) -list -help`n"
 Write-Host -f yellow "-purge " -n; Write-Host -f white "deletes all histories of a command."
 Write-Host -f yellow "# " -n; Write-Host -f white "sets the maximum number of copies to retain; 10 being the default."
 Write-Host -f yellow "-dev " -n; Write-Host -f white "marks the command as being under development, which temporarily turns off pruning, but -stable turns it back on."
@@ -31,6 +72,7 @@ Write-Host -f yellow "	-force " -n; Write-Host -f white "forces a refresh of the
 Write-Host -f yellow "`n-compare " -n; Write-Host -f white "compares different versions of the backup file with each other."
 Write-Host -f yellow "	-differences " -n; Write-Host -f white "shows only lines that are different." 
 Write-Host -f yellow "	-savedifferences " -n; Write-Host -f white "saves the differences comparison to an output file: " -n; Write-Host -f green "command - yyyy-mm-dd_hh-mm-ss & yyyy-mm-dd_hh-mm-ss.differences." 
+Write-Host -f yellow "`n-list " -n; Write-Host -f white "presents a detailed table of all backups available." 
 ; Write-Host -f yellow "`n-help " -n; Write-Host -f white "provides in depth instructions about this function.`n"; return}
 
 # Ensure devflag is created or exists for single commands, but not -all.
@@ -99,11 +141,11 @@ if ($uniqueOld.Count -eq 0 -and $uniqueNew.Count -eq 0) {Write-Host -f green "`n
 
 # Helper function to print lines with gap detection
 $script:differenceOutput = @()
-function Print-With-Gaps($lines, $color) {$prevNum = 0
+function Print-With-Gaps($lines, $colour) {$prevNum = 0
 foreach ($line in $lines) {if ($line -match '^(\d+):') {$currNum = [int]$matches[1]
-if ($prevNum -ne 0 -and ($currNum -gt $prevNum + 1)) {Write-Host ("-" * 100) -f $color; $script:differenceOutput += ("-" * 100)}
+if ($prevNum -ne 0 -and ($currNum -gt $prevNum + 1)) {Write-Host ("-" * 100) -f $colour; $script:differenceOutput += ("-" * 100)}
 $prevNum = $currNum}
-Write-Host $line -f $color; $script:differenceOutput += $line}}
+Write-Host $line -f $colour; $script:differenceOutput += $line}}
 
 # Add header lines to output
 Write-Host ""; Write-Host -f yellow ("-" * 100); Write-Host -f yellow "Unique Differences Between Files"; Write-Host -f yellow ("-" * 100); Write-Host ""
@@ -233,14 +275,18 @@ The -stable flag disables the -dev mode, indicating that normal pruning and hist
 
 The -quiet option will reduce the screen output; reduce, not completely eliminate.
 
+The -all switch will run the command against all of the commands available as a result of the current user's profile.
+	• -force completes a backup, even if the "ranflag" is set, which prevents the backup from running more than once a month.
+	• At the end of the process, the script will determine if any commands no longer exist and archive them in a ZIP file for future reference.
+
 The -compare option will compare different version backups of the command specified with one another, in order to demonstrate differences.
 	• The comparison uses a character match percentage to provide output. Lines that exist 100% identically in the other file will be white, 80-100% matches will be cyan, the rest will be yellow.
 	• -differences will display only those lines that are different from one another.
 		• -savedifferences will save the differences output to a file: command - yyyy-mm-dd_hh-mm-ss & yyyy-mm-dd_hh-mm-ss.differences.
 
-The -all switch will run the command against all of the commands available as a result of the current user's profile.
-	• -force completes a backup, even if the "ranflag" is set, which prevents the backup from running more than once a month.
-	• At the end of the process, the script will determine if any commands no longer exist and archive them in a ZIP file for future reference.
+The -list option will provide a table of all version directories available, the number of files contained therein and a summary.
+	• Aliases and script backups will be marked, accordingly.
+	• Functions with their development flag set will also be clearly identified.
 
-This function also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older version. So, keep that in mind.
+This module also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older version. So, keep that in mind.
 ##>
