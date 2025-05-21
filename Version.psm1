@@ -44,7 +44,7 @@ if ($hasScriptHeader) {break}}
 if ($hasScriptHeader) {$type = "script"} elseif ($hasAlias) {$type = "alias"} else {$type = ""}
 
 # Output.
-$totalDirs++
+if ($count -gt 0) {$totalDirs++}
 [PSCustomObject]@{Directory = $_.Name; Files = $count; Oldest = $oldest; Newest = $newest; Type = $type; Development = $devflag}}
 Write-Host ("{0,-30} {1,6} {2,8} {3,12} {4,8} {5,17}" -f "`nDirectory", "Files", "Oldest", "Newest", "Type", "Development") -f white; Write-Host -f cyan ("-" * 100)
 foreach ($row in $results) {switch ($row.Type) {"script" {$colour = "darkcyan"}; "alias" {$colour = "cyan"}; default {$colour = "white"}}
