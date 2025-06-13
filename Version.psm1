@@ -204,6 +204,10 @@ if ($cmddetails -match '(?i)\$script\w*\s*=\s*["'']?([^"]+\.ps1)[";&.\s]+\$scrip
 if ($ps1file -match '(\$\w+)') {$varName = $matches[1].Substring(1); $varValue = (Get-Variable -Name $varName).Value; $ps1file = $ps1file -replace [regex]::Escape($matches[1]), $varValue}
 if (Test-Path $ps1file) {$ps1file = Resolve-Path $ps1file -ErrorAction SilentlyContinue; $ps1Content = Get-Content $ps1file -Raw; $cmddetails += "`n" + ("-" * 100) + "`n" + $ps1Content}}
 
+# Obtain the PSD1 file if it exists and append it to the end, as well.
+$psd1path = [System.IO.Path]::ChangeExtension($(Get-Module $cmd).Path, '.psd1')
+if (Test-Path $psd1path) {$psd1Content = Get-Content $psd1path -Raw; $cmddetails += "`n" + ("-" * 100) + "`n" + $psd1Content}
+
 # Output the command details, with all additions, such as alias and script to the screen, if the -quiet flag is not set.
 if (-not $quiet) {""; Write-Host -f cyan "Command: " -n; Write-Host -f yellow $cmd; Write-Host -f cyan "Source: " -n; Write-Host -f yellow $cmdsourceinfo; Write-Host -f yellow ("-"*100); Write-Host -f white $cmddetails"`n"; Write-Host -f yellow ("-"*100)}
 
