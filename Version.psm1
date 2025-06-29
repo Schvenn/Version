@@ -1,14 +1,21 @@
 function version ($cmd, [int]$maxhistory = 5, [switch]$dev, [switch]$stable, [switch]$quiet, [switch]$all, [switch]$force, [switch]$purge, [switch]$compare, [switch]$savedifferences, [switch]$differences, [switch]$list, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
 
+function Read-BackupFileContent ([string]$path) {if ($path -like '*.gz') {$fs = [System.IO.File]::OpenRead($path); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $reader = New-Object System.IO.StreamReader($gz); $content = $reader.ReadToEnd(); $reader.Close(); $gz.Close(); $fs.Close(); return $content -split "`r?`n"}
+else {return Get-Content $path}}
+
 # Ensure -dev is being called correctly for only single commands.
 $backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\$cmd"; $devflag = Join-Path $backupdirectory ".development_flag"
 if ($dev -and (-not $cmd)) {Write-Host -f red "`nYou must specify a single command with -cmd when using -dev.`n"; return}
 if ($dev -and $stable) {Write-Host -f red "`nA command can only be under development or a stable release, not both.`n"; return}
 
 if ($help) {# Inline help.
-function wordwrap ($field, [int]$maximumlinelength = 65) {# Modify fields sent to it with proper word wrapping.
-if ($null -eq $field -or $field.Length -eq 0) {return $null}
+# Modify fields sent to it with proper word wrapping.
+function wordwrap ($field, $maximumlinelength) {if ($null -eq $field -or $field.Length -eq 0) {return $null}
 $breakchars = ',.;?!\/ '; $wrapped = @()
+
+if (-not $maximumlinelength) {[int]$maximumlinelength = (100, $Host.UI.RawUI.WindowSize.Width | Measure-Object -Maximum).Maximum}
+if ($maximumlinelength) {if ($maximumlinelength -lt 60) {[int]$maximumlinelength = 60}
+if ($maximumlinelength -gt $Host.UI.RawUI.BufferSize.Width) {[int]$maximumlinelength = $Host.UI.RawUI.BufferSize.Width}}
 
 foreach ($line in $field -split "`n") {if ($line.Trim().Length -eq 0) {$wrapped += ''; continue}
 $remaining = $line.Trim()
@@ -42,7 +49,7 @@ while ($true); return}
 if ($list) {$root = "$powershell\archive\development history"
 
 $totalDirs = 0
-$results = Get-ChildItem -Path $root -Directory | ForEach-Object {$dir = $_.FullName; $backupFiles = Get-ChildItem -Path $dir -Filter *.backup -File; $count = $backupFiles.Count
+$results = Get-ChildItem -Path $root -Directory | ForEach-Object {$dir = $_.FullName; $backupFiles = Get-ChildItem -Path $dir -File | Where-Object {$_.Name -match '\.backup(\.gz)?$'}; $count = $backupFiles.Count
 $oldest = if ($count) {($backupFiles | Sort-Object LastWriteTime)[0].LastWriteTime.ToString("yyyy-MM-dd")} else {"-"}
 $newest = if ($count) {($backupFiles | Sort-Object LastWriteTime -Descending)[0].LastWriteTime.ToString("yyyy-MM-dd")} else {"-"}
 $devflag = if (Test-Path "$dir\.development_flag") {"Yes"}
@@ -107,8 +114,7 @@ if ($cmd -and ($compare -or $differences -or $savedifferences)) {
 # Error checking.
 $powershell=Split-Path $profile; $backupFolder=Join-Path $powershell "Archive\Development History\$cmd"
 if(-not(Test-Path $backupFolder)) {Write-Host "$cmd version files not found at: $backupFolder" -f red; return}
-
-$backupFiles=Get-ChildItem -Path $backupFolder -Filter "$cmd *.backup" | Sort-Object LastWriteTime -Descending
+$backupFiles = Get-ChildItem -Path $backupFolder -File | Where-Object {$_.Name -match "$cmd.*\.backup(\.gz)?$"} | Sort-Object LastWriteTime -Descending
 if($backupFiles.Count -lt 2) {Write-Host "Not enough previous versions found to compare (need at least 2)." -f yellow; return}
 
 # Present and select versions to compare.
@@ -128,7 +134,7 @@ if (-not ($olderChoice -match '^\d+$') -or -not $olderOptions.Contains([int]$old
 $previous = $backupFiles[[int]$olderChoice - 1]}}
 
 # Obtain content.
-$oldLines = Get-Content $previous.FullName; $newLines = Get-Content $newest.FullName; $maxLines = [Math]::Max($oldLines.Count, $newLines.Count)
+$oldLines = Read-BackupFileContent $previous.FullName; $newLines = Read-BackupFileContent $newest.FullName; $maxLines = [Math]::Max($oldLines.Count, $newLines.Count)
 ""; Write-Host -f yellow ("-" * 100); Write-Host -f cyan "Comparing previous versions:"; Write-Host -f yellow "Recent: " -n; Write-Host -f white "$($newest.Name)"; Write-Host -f green "Older: " -n; Write-Host -f white "$($previous.Name)"
 
 # Defined basic fuzzy match ratio.
@@ -219,11 +225,16 @@ elseif (Test-Path $devflag) {Remove-Item $devflag -Force; Write-Host -f cyan "Th
 # Write the file.
 $filename = "$cmd - $(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').backup"; $backup = Join-Path $backupdirectory $filename; New-Item -ItemType Directory $backupdirectory -Force | Out-Null; $cmddetails | Out-File $backup -Force 
 
+# If file is larger than 1KB, compress it and delete the original
+if ((Get-Item $backup).Length -gt 1KB) {$gzipFile = "$backup.gz"; $fs = [System.IO.File]::OpenRead($backup); $gzfs = [System.IO.File]::Create($gzipFile); $gz = New-Object System.IO.Compression.GZipStream($gzfs, [System.IO.Compression.CompressionMode]::Compress); $fs.CopyTo($gz); $gz.Close(); $fs.Close(); $gzfs.Close(); Remove-Item $backup -Force; $backup = $gzipFile}
+
 # -------------------------------- This is the end of the version file creation. -------------------------------------- 
 
 # Keep only unique hashes. This will also delete the current file that was just created, if the hash for it is identical to a previous version.
-$sha256 = [System.Security.Cryptography.SHA256]::Create(); $files = Get-ChildItem -Path $backupdirectory -Filter *.backup -File; $hashToFiles = @{}
-foreach ($file in $files) {try {$fileBytes = [System.IO.File]::ReadAllBytes($file.FullName); $fileHashBytes = $sha256.ComputeHash($fileBytes); $fileHash = [System.BitConverter]::ToString($fileHashBytes) -replace '-', ''
+$sha256 = [System.Security.Cryptography.SHA256]::Create(); $files = Get-ChildItem -Path $backupdirectory -File | Where-Object {$_.Name -match '\.backup(\.gz)?$'}; $hashToFiles = @{}
+foreach ($file in $files) {try {if ($file.Extension -eq '.gz') {$fs = [System.IO.File]::OpenRead($file.FullName); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $ms = New-Object System.IO.MemoryStream; $gz.CopyTo($ms); $gz.Close(); $fs.Close(); $fileBytes = $ms.ToArray(); $ms.Close()}
+else {$fileBytes = [System.IO.File]::ReadAllBytes($file.FullName)}
+$fileHashBytes = $sha256.ComputeHash($fileBytes); $fileHash = [System.BitConverter]::ToString($fileHashBytes) -replace '-', ''
 if (-not $hashToFiles.ContainsKey($fileHash)) {$hashToFiles[$fileHash] = @()}; $hashToFiles[$fileHash] += $file}
 catch {Write-Warning "Failed to hash file $($file.FullName): $_"}}
 foreach ($group in $hashToFiles.Values) {$sortedGroup = $group | Sort-Object LastWriteTime
@@ -235,20 +246,21 @@ elseif (-not $quiet) {Write-Host -f green "File $backup saved."; Write-Host -f y
 if (-not (Test-Path $backup)) {Write-Host -f white "$cmd`: " -n; Write-Host -f red "The current backup would be identical to an existing file, therefore the latest version is not being retained."}
 
 # Group files by date and keep only the oldest and newest per day, except when the -dev flag is set, at which point all non-identical hashes will be kept.
-if (-not $dev -and -not (Test-Path $devflag)) {$files = Get-ChildItem -Path $backupdirectory -Filter *.backup -File | Sort-Object Name; $filesByDate = $files | Group-Object {if ($_ -match '(\d{4}-\d{2}-\d{2})_\d{2}-\d{2}-\d{2}') {$matches[1]}
+if (-not $dev -and -not (Test-Path $devflag)) {$files = Get-ChildItem -Path $backupdirectory -File | Where-Object {$_.Name -match '\.backup(\.gz)?$'} | Sort-Object Name; $filesByDate = $files | Group-Object {if ($_ -match '(\d{4}-\d{2}-\d{2})_\d{2}-\d{2}-\d{2}') {$matches[1]}
 else {'unknown'}}
 foreach ($group in $filesByDate) {$sortedGroup = $group.Group | Sort-Object Name
 if ($sortedGroup.Count -gt 2) {$sortedGroup[1..($sortedGroup.Count - 2)] | ForEach-Object {Remove-Item $_.FullName -Force}}}
 
 # Enforce maxhistory count globally by deleting oldest files beyond the set limit, but also only if the -dev flag is not set.
-$files = Get-ChildItem -Path $backupdirectory -File | Sort-Object LastWriteTime; $excess = $files.Count - $maxhistory
+$files = Get-ChildItem -Path $backupdirectory -File | Where-Object {$_.Name -match '\.backup(\.gz)?$'} | Sort-Object LastWriteTime; $excess = $files.Count - $maxhistory
 if ($excess -gt 0) {$files | Select-Object -First $excess | ForEach-Object {Remove-Item $_.FullName -Force}}}
 
 # Enumerate the versions that exist within the command's version directory, but only if the -quiet flag is not set.
 if (-not $quiet) {Write-Host -f yellow "`nAvailable versions:`n"
-$headers = @("Size", "SHA256", "Last Modified"); $padding = 5; $files = Get-ChildItem -Path $backupdirectory -File | Where-Object {$_.Extension -eq '.backup' -or $_.Extension -eq '.development_flag'}
-$rows = foreach ($file in $files) {if ($file.Name -eq '.development_flag') {[PSCustomObject]@{Size = "0 bytes"; SHA256 = ".development_flag was set"; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}
-else {$hash = Get-FileHash -Path $file.FullName -Algorithm SHA256; [PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hash.Hash; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}}
+$headers = @("Size", "SHA256", "Last Modified"); $padding = 5; $files = Get-ChildItem -Path $backupdirectory -File | Where-Object {$_.Extension -in '.backup', '.gz' -or $_.Name -eq '.development_flag'}; $rows = foreach ($file in $files) {if ($file.Name -eq '.development_flag') {[PSCustomObject]@{Size = "0 bytes"; SHA256 = ".development_flag was set"; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}
+else {if ($file.Extension -eq '.gz') {$fs = [System.IO.File]::OpenRead($file.FullName); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $ms = New-Object System.IO.MemoryStream; $gz.CopyTo($ms); $gz.Close(); $fs.Close(); $rawBytes = $ms.ToArray(); $ms.Close(); $sha256 = [System.Security.Cryptography.SHA256]::Create(); $hashBytes = $sha256.ComputeHash($rawBytes); $hashValue = [BitConverter]::ToString($hashBytes) -replace '-', ''}
+else {$hashValue = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash}
+[PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hashValue; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}}
 $widths = @{}; foreach ($header in $headers) {$maxLen = ($rows | ForEach-Object {($_.PSObject.Properties[$header].Value.ToString()).Length;}) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum; $widths[$header] = [Math]::Max($maxLen, $header.Length)}
 $spacer = ' ' * $padding
 $headerLine = ($headers | ForEach-Object {$_.PadRight($widths[$_]);}) -join $spacer; Write-Host $headerLine -f cyan
@@ -261,7 +273,7 @@ if (-not $all) {archive -cmd $cmd -maxhistory $maxhistory -stable:$stable -quiet
 
 # Alternately, run version against every command.
 if ($all) {$today = [int](Get-Date).day; $ranflag = "$PowerShell\Archive\Development History\.backupallversions"; $devHistoryPath = "$PowerShell\Archive\Development History"; $zipFile = "$PowerShell\Archive\Retired Functions and Aliases.zip"
-if ($force) {$today = 1; try {Remove-Item $ranflag -Force | Out-Null} catch {""}}
+if ($force) {$today = 1; try {Remove-Item $ranflag -Force -ea SilentlyContinue| Out-Null} catch {""}}
 if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*(sal|set-alias)\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object {$fn = if ($_.Groups.Count -gt 2) {$_.Groups[2].Value} else {$_.Groups[1].Value}; if (-not ($fn -eq 'archive' -and $scriptPath -eq $MyInvocation.MyCommand.Path)) {$fn}}}} | Sort-Object -Unique | ForEach-Object {archive -cmd $_ -maxhistory $maxhistory -stable:$stable -quiet:$quiet -purge:$purge}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
 if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-Null}
 
