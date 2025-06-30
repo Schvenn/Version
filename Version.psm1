@@ -1,4 +1,4 @@
-function version ($cmd, [int]$maxhistory = 5, [switch]$dev, [switch]$stable, [switch]$quiet, [switch]$all, [switch]$force, [switch]$purge, [switch]$compare, [switch]$savedifferences, [switch]$differences, [switch]$list, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
+function version ($cmd, [int]$maxhistory = 5, [switch]$dev, [switch]$stable, [switch]$quiet, [switch]$hidden, [switch]$all, [switch]$force, [switch]$purge, [switch]$compare, [switch]$savedifferences, [switch]$differences, [switch]$list, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
 
 function Read-BackupFileContent ([string]$path) {if ($path -like '*.gz') {$fs = [System.IO.File]::OpenRead($path); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $reader = New-Object System.IO.StreamReader($gz); $content = $reader.ReadToEnd(); $reader.Close(); $gz.Close(); $fs.Close(); return $content -split "`r?`n"}
 else {return Get-Content $path}}
@@ -8,7 +8,6 @@ $backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\
 if ($dev -and (-not $cmd)) {Write-Host -f red "`nYou must specify a single command with -cmd when using -dev.`n"; return}
 if ($dev -and $stable) {Write-Host -f red "`nA command can only be under development or a stable release, not both.`n"; return}
 
-if ($help) {# Inline help.
 # Modify fields sent to it with proper word wrapping.
 function wordwrap ($field, $maximumlinelength) {if ($null -eq $field -or $field.Length -eq 0) {return $null}
 $breakchars = ',.;?!\/ '; $wrapped = @()
@@ -29,6 +28,7 @@ $chunk = $segment.Substring(0, $breakIndex + 1).TrimEnd(); $wrapped += $chunk; $
 if ($remaining.Length -gt 0) {$wrapped += $remaining}}
 return ($wrapped -join "`n")}
 
+if ($help) {# Inline help.
 function scripthelp ($section) {# (Internal) Generate the help sections from the comments section of the script.
 ""; Write-Host -f yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -f yellow; Write-Host -f yellow ("-" * 100)
 if ($lines.Count -gt 1) {wordwrap $lines[1] 100| Out-String | Out-Host -Paging}; Write-Host -f yellow ("-" * 100)}
@@ -44,6 +44,53 @@ if ($input -match '^\d+$') {$index = [int]$input
 if ($index -ge 1 -and $index -le $sections.Count) {$selection = $index}
 else {$selection = $null}} else {""; return}}
 while ($true); return}
+
+if ($cmd -and $hidden) {# Backup hidden function.
+
+function gethiddenfunction ($module, $function) {$path = (Get-Module $module).Path; $lines = Get-Content $path; $start = ($lines | Select-String -Pattern "function\s+$function\b").LineNumber - 1; $braceCount = 0; $end = $start
+do {$line = $lines[$end]; $braceCount += ($line -split '{').Count - 1; $braceCount -= ($line -split '}').Count - 1; $end++}
+while ($braceCount -gt 0 -and $end -lt $lines.Count)
+return ($lines[$start..($end - 1)] -join "`n")}
+
+# Error-checking.
+Write-Host -f yellow "`nWhat is the name of the parent module for function " -n; Write-Host -f white "$cmd" -n; Write-Host -f yellow "? " -n; $module = Read-Host; ""
+if (-not $module) {Write-Host -f red "You must have the parent module name to continue. Aborting.`n"; return}
+if (-not (Get-Command $module -ea SilentlyContinue)) {Write-Host -f red "Invalid module. Aborting.`n"; return}
+$cmddetails = gethiddenfunction $module $cmd
+if ($cmddetails.length -lt 1) {Write-Host -f red "Function not found. Aborting.`n"; return}
+
+
+# Write the file.
+$backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\.hidden\$cmd"; $filename = "$cmd - $(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').backup"; $backup = Join-Path $backupdirectory $filename; New-Item -ItemType Directory $backupdirectory -Force | Out-Null; $cmddetails | Out-File $backup -Force 
+
+# If file is larger than 1KB, compress it and delete the original
+if ((Get-Item $backup).Length -gt 1KB) {$gzipFile = "$backup.gz"; $fs = [System.IO.File]::OpenRead($backup); $gzfs = [System.IO.File]::Create($gzipFile); $gz = New-Object System.IO.Compression.GZipStream($gzfs, [System.IO.Compression.CompressionMode]::Compress); $fs.CopyTo($gz); $gz.Close(); $fs.Close(); $gzfs.Close(); Remove-Item $backup -Force; $backup = $gzipFile}
+
+# Keep only unique hashes. This will also delete the current file that was just created, if the hash for it is identical to a previous version.
+$sha256 = [System.Security.Cryptography.SHA256]::Create(); $files = Get-ChildItem -Path $backupdirectory -File | Where-Object {$_.Name -match '\.backup(\.gz)?$'}; $hashToFiles = @{}
+foreach ($file in $files) {try {if ($file.Extension -eq '.gz') {$fs = [System.IO.File]::OpenRead($file.FullName); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $ms = New-Object System.IO.MemoryStream; $gz.CopyTo($ms); $gz.Close(); $fs.Close(); $fileBytes = $ms.ToArray(); $ms.Close()}
+else {$fileBytes = [System.IO.File]::ReadAllBytes($file.FullName)}
+$fileHashBytes = $sha256.ComputeHash($fileBytes); $fileHash = [System.BitConverter]::ToString($fileHashBytes) -replace '-', ''
+if (-not $hashToFiles.ContainsKey($fileHash)) {$hashToFiles[$fileHash] = @()}; $hashToFiles[$fileHash] += $file}
+catch {Write-Warning "Failed to hash file $($file.FullName): $_"}}
+foreach ($group in $hashToFiles.Values) {$sortedGroup = $group | Sort-Object LastWriteTime
+if ($sortedGroup.Count -gt 1) {$sortedGroup[1..($sortedGroup.Count - 1)] | ForEach-Object {Remove-Item $_.FullName -Force}}}
+
+# Display results of the hash comparison determination.
+Write-Host -f yellow ("-" * 100); Write-Host -f white $cmddetails; Write-Host -f yellow ("-" * 100); wordwrap "`nPlease be aware that this is a best effort attempt. Hidden function backups do not follow the same rules as public functions. They are not included in -all backups, they are not archived when they are retired and an unlimited number of archival copies can be created.`n" 100 | Write-Host -f yellow
+if (Test-Path $backup) {Write-Host -f white "File $backup saved."}
+if (-not (Test-Path $backup)) {Write-Host -f white "$cmd`: " -n; wordwrap "The current backup would be identical to an existing file, therefore the latest version is not being retained." 80 | Write-Host -f red}
+
+# Enumerate.
+Write-Host -f yellow "`nAvailable versions:`n"
+$headers = @("Size", "SHA256", "Last Modified"); $padding = 5; $files = Get-ChildItem -Path $backupdirectory -File | Where-Object {$_.Extension -in '.backup', '.gz' -or $_.Name -eq '.development_flag'}; $rows = foreach ($file in $files) {if ($file.Name -eq '.development_flag') {[PSCustomObject]@{Size = "0 bytes"; SHA256 = ".development_flag was set"; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}
+else {if ($file.Extension -eq '.gz') {$fs = [System.IO.File]::OpenRead($file.FullName); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $ms = New-Object System.IO.MemoryStream; $gz.CopyTo($ms); $gz.Close(); $fs.Close(); $rawBytes = $ms.ToArray(); $ms.Close(); $sha256 = [System.Security.Cryptography.SHA256]::Create(); $hashBytes = $sha256.ComputeHash($rawBytes); $hashValue = [BitConverter]::ToString($hashBytes) -replace '-', ''}
+else {$hashValue = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash}
+[PSCustomObject]@{Size = "$($file.Length) bytes"; SHA256 = $hashValue; 'Last Modified' = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")}}}
+$widths = @{}; foreach ($header in $headers) {$maxLen = ($rows | ForEach-Object {($_.PSObject.Properties[$header].Value.ToString()).Length;}) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum; $widths[$header] = [Math]::Max($maxLen, $header.Length)}
+$spacer = ' ' * $padding
+$headerLine = ($headers | ForEach-Object {$_.PadRight($widths[$_]);}) -join $spacer; Write-Host $headerLine -f cyan
+foreach ($row in $rows | Sort-Object 'Last Modified' -Descending) {$line = foreach ($header in $headers) {$value = $row.PSObject.Properties[$header].Value.ToString(); if ($header -eq "Size") {$value.PadLeft($widths[$header])} else {$value.PadRight($widths[$header])}}; Write-Host ($line -join $spacer) -f white}; ""; Write-Host -f yellow ("-"*100); ""; return}
 
 # Call -list.
 if ($list) {$root = "$powershell\archive\development history"
@@ -278,7 +325,7 @@ if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -P
 if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-Null}
 
 # When running version against all commands, enumerate and compare directories to current assets and archive retired ones at the end of the process.
-$currentFunctionsAndAliases = Get-Command -Type Function, Alias | Select-Object -ExpandProperty Name; $existingDirs = Get-ChildItem -Path $devHistoryPath -Directory | Select-Object -ExpandProperty Name; $retiredDirs = $existingDirs | Where-Object {$_ -notin $currentFunctionsAndAliases}
+$currentFunctionsAndAliases = Get-Command -Type Function, Alias | Select-Object -ExpandProperty Name; $existingDirs = Get-ChildItem -Path $devHistoryPath -Directory | Select-Object -ExpandProperty Name; $retiredDirs = $existingDirs |  Where-Object {$_ -notin $currentFunctionsAndAliases -and $_ -notlike '.hidden*'}
 if ($retiredDirs.Count -gt 2) {Write-Host -f white "The following commands are not present in the current session: " -n; $retiredDirs -join ", " | Write-Host -f cyan; Write-Host -f white "This means that there are " -n; Write-Host -f green $retiredDirs.Count -n; Write-Host -f white " directories to archive. Are you sure you want to continue? " -n; [console]::foregroundcolor = "red"; $response = Read-Host "(Y/N)"; if ($response -notmatch "(?i)^Y") {[console]::foregroundcolor = "gray"; ""; return}}
 [console]::foregroundcolor = "gray"; if ($retiredDirs.Count -gt 0) {$retiredDirs | ForEach-Object {$dirPath = Join-Path $devHistoryPath $_; 
 if (-not (Test-Path $dirPath)) {Write-Host "Warning: Directory not found: $dirPath"}
