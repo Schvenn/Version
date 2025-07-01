@@ -1,5 +1,5 @@
 # Version
-Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -all -help
+Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -all -force -(compare -savedifferences -differences) -list -help
 
 This script allows you to backup a command that you are currently modifying to your "PowerShell\Archive\Development History" directory.
 
@@ -19,6 +19,8 @@ The -dev feature disables all pruning by date or volume until the devflag is tur
 The -stable flag disables the -dev mode, indicating that normal pruning and history retention can resume.
 
 The -quiet option will reduce the screen output; reduce, not completely eliminate.
+
+The -hidden option will attempt to find and backup private/hidden functions within a module.
 
 The -all switch will run the command against all of the commands available as a result of the current user's profile.
 
