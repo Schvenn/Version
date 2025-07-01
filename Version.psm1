@@ -1,6 +1,6 @@
 function version ($cmd, [int]$maxhistory = 5, [switch]$dev, [switch]$stable, [switch]$quiet, [switch]$hidden, [switch]$all, [switch]$force, [switch]$purge, [switch]$compare, [switch]$savedifferences, [switch]$differences, [switch]$list, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
 
-function Read-BackupFileContent ([string]$path) {if ($path -like '*.gz') {$fs = [System.IO.File]::OpenRead($path); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $reader = New-Object System.IO.StreamReader($gz); $content = $reader.ReadToEnd(); $reader.Close(); $gz.Close(); $fs.Close(); return $content -split "`r?`n"}
+function readbackupfilecontent ([string]$path) {if ($path -like '*.gz') {$fs = [System.IO.File]::OpenRead($path); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $reader = New-Object System.IO.StreamReader($gz); $content = $reader.ReadToEnd(); $reader.Close(); $gz.Close(); $fs.Close(); return $content -split "`r?`n"}
 else {return Get-Content $path}}
 
 # Ensure -dev is being called correctly for only single commands.
@@ -48,6 +48,7 @@ while ($true); return}
 if ($cmd -and $hidden) {# Backup hidden function.
 
 function gethiddenfunction ($module, $function) {$path = (Get-Module $module).Path; $lines = Get-Content $path; $start = ($lines | Select-String -Pattern "function\s+$function\b").LineNumber - 1; $braceCount = 0; $end = $start
+if ((Get-Content $path -raw) -notmatch "(?i)function\s+$function") {Write-Host -f red "Function not found. Aborting.`n"; return $false}
 do {$line = $lines[$end]; $braceCount += ($line -split '{').Count - 1; $braceCount -= ($line -split '}').Count - 1; $end++}
 while ($braceCount -gt 0 -and $end -lt $lines.Count)
 return ($lines[$start..($end - 1)] -join "`n")}
@@ -57,8 +58,7 @@ Write-Host -f yellow "`nWhat is the name of the parent module for function " -n;
 if (-not $module) {Write-Host -f red "You must have the parent module name to continue. Aborting.`n"; return}
 if (-not (Get-Command $module -ea SilentlyContinue)) {Write-Host -f red "Invalid module. Aborting.`n"; return}
 $cmddetails = gethiddenfunction $module $cmd
-if ($cmddetails.length -lt 1) {Write-Host -f red "Function not found. Aborting.`n"; return}
-
+if (-not $cmddetails) {return}
 
 # Write the file.
 $backupdirectory = Join-Path (Split-Path $profile) "Archive\Development History\.hidden\$cmd"; $filename = "$cmd - $(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').backup"; $backup = Join-Path $backupdirectory $filename; New-Item -ItemType Directory $backupdirectory -Force | Out-Null; $cmddetails | Out-File $backup -Force 
@@ -181,11 +181,11 @@ if (-not ($olderChoice -match '^\d+$') -or -not $olderOptions.Contains([int]$old
 $previous = $backupFiles[[int]$olderChoice - 1]}}
 
 # Obtain content.
-$oldLines = Read-BackupFileContent $previous.FullName; $newLines = Read-BackupFileContent $newest.FullName; $maxLines = [Math]::Max($oldLines.Count, $newLines.Count)
+$oldLines = readbackupfilecontent $previous.FullName; $newLines = readbackupfilecontent $newest.FullName; $maxLines = [Math]::Max($oldLines.Count, $newLines.Count)
 ""; Write-Host -f yellow ("-" * 100); Write-Host -f cyan "Comparing previous versions:"; Write-Host -f yellow "Recent: " -n; Write-Host -f white "$($newest.Name)"; Write-Host -f green "Older: " -n; Write-Host -f white "$($previous.Name)"
 
 # Defined basic fuzzy match ratio.
-function Get-MatchRatio {param ($a, $b)
+function getmatchratio {param ($a, $b)
 if (-not $a -or -not $b) {return 0}
 $maxLen = [Math]::Max($a.Length, $b.Length); $same = 0
 for ($i = 0; $i -lt $maxLen; $i++) {if ($i -lt $a.Length -and $i -lt $b.Length -and $a[$i] -eq $b[$i]) {$same++}}
@@ -198,7 +198,7 @@ for ($i = 0; $i -lt $maxLines; $i++) {$oldExists = $i -lt $oldLines.Count
 $newExists = $i -lt $newLines.Count
 $oldLine = if ($oldExists) {$oldLines[$i]} else {""}
 $newLine = if ($newExists) {$newLines[$i]} else {""}
-$ratio = Get-MatchRatio $oldLine $newLine
+$ratio = getmatchratio $oldLine $newLine
 if ($oldExists) {$oldColor = if ($ratio -eq 1 -or ($newExists -and $newLines -contains $oldLine)) {"White"} else {"Yellow"}
 Write-Host ("{0}: Old: {1}" -f ($i+1), $oldLine) -f $oldColor}
 if ($newExists) {$newColor = if ($ratio -eq 1 -or ($oldExists -and $oldLines -contains $newLine)) {"White"} else {"Yellow"}
@@ -215,7 +215,7 @@ if ($uniqueOld.Count -eq 0 -and $uniqueNew.Count -eq 0) {Write-Host -f green "`n
 
 # Helper function to print lines with gap detection
 $script:differenceOutput = @()
-function Print-With-Gaps($lines, $colour) {$prevNum = 0
+function printwithgaps ($lines, $colour) {$prevNum = 0
 foreach ($line in $lines) {if ($line -match '^(\d+):') {$currNum = [int]$matches[1]
 if ($prevNum -ne 0 -and ($currNum -gt $prevNum + 1)) {Write-Host ("-" * 100) -f $colour; $script:differenceOutput += ("-" * 100)}
 $prevNum = $currNum}
@@ -225,9 +225,9 @@ Write-Host $line -f $colour; $script:differenceOutput += $line}}
 Write-Host ""; Write-Host -f yellow ("-" * 100); Write-Host -f yellow "Unique Differences Between Files"; Write-Host -f yellow ("-" * 100); Write-Host ""
 $script:differenceOutput += ""; $script:differenceOutput += ("-" * 100); $script:differenceOutput += "Unique Differences Between Files"; $script:differenceOutput += ("-" * 100); $script:differenceOutput += ""
 
-Print-With-Gaps $uniqueOld 'gray'
+printwithgaps $uniqueOld 'gray'
 if ($uniqueOld.Count -gt 0 -and $uniqueNew.Count -gt 0) {Write-Host ""; Write-Host -f yellow ("-" * 100); Write-Host ""; $script:differenceOutput += ""; $script:differenceOutput += ("-" * 100); $script:differenceOutput += ""}
-Print-With-Gaps $uniqueNew 'white'
+printwithgaps $uniqueNew 'white'
 Write-Host ""; Write-Host ("-" * 100) -f yellow; Write-Host ""; $script:differenceOutput += ""; $script:differenceOutput += ("-" * 100); $script:differenceOutput += ""
 
 # Save the differences to file if requested
