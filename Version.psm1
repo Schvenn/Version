@@ -137,11 +137,12 @@ $labelCol  = "{0,-30}" -f $typeSummary; $filesCol = "{0,5}" -f $totalFiles; $old
 Write-Host -f cyan ("-" * 100); Write-Host -f white $labelCol -n; Write-Host -f white " $filesCol" -n; Write-Host -f darkgray " $oldCol" -n; Write-Host -f green " $newCol" -n; Write-Host -f white " $typeCol" -n; Write-Host -f white " $devCol"; Write-Host -f cyan ("-" * 100); ""; return}
 
 # Usage Error handling for no $cmd.
-if (-not $cmd -and -not $all) {Write-Host -f cyan "`nUsage: version `"command`" -purge #(maxhistory) -(dev/stable) -quiet -all -force -(compare -savedifferences -differences) -list -help`n"
+if (-not $cmd -and -not $all) {Write-Host -f cyan "`nUsage: version `"command`" -purge #(maxhistory) -(dev/stable) -quiet -hidden -all -force -(compare -savedifferences -differences) -list -help`n"
 Write-Host -f yellow "-purge " -n; Write-Host -f white "deletes all histories of a command."
 Write-Host -f yellow "# " -n; Write-Host -f white "sets the maximum number of copies to retain; 10 being the default."
 Write-Host -f yellow "-dev " -n; Write-Host -f white "marks the command as being under development, which temporarily turns off pruning, but -stable turns it back on."
 Write-Host -f yellow "-quiet " -n; Write-Host -f white "reduces screen output to a minimum."
+Write-Host -f yellow "-hidden " -n; Write-Host -f white "attempts to find and backup private/hidden functions within a module."
 Write-Host -f yellow "`n-all " -n; Write-Host -f white "backs up every function and alias available as a result of the current user profile."
 Write-Host -f yellow "	-force " -n; Write-Host -f white "forces a refresh of the -all backup, even if not the first of the month."
 Write-Host -f yellow "`n-compare " -n; Write-Host -f white "compares different versions of the backup file with each other."
@@ -358,6 +359,8 @@ The -dev feature disables all pruning by date or volume until the devflag is tur
 The -stable flag disables the -dev mode, indicating that normal pruning and history retention can resume.
 
 The -quiet option will reduce the screen output; reduce, not completely eliminate.
+
+The -hidden option will attempt to find and backup private/hidden functions within a module.
 
 The -all switch will run the command against all of the commands available as a result of the current user's profile.
 	• -force completes a backup, even if the "ranflag" is set, which prevents the backup from running more than once a month.
