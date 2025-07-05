@@ -1,6 +1,6 @@
 @{
 RootModule = 'version.psm1'
-ModuleVersion = '1.1'
+ModuleVersion = '1.3'
 GUID = 'd5f8e5b3-1a23-4a9f-8b7c-9e6c5b3a2f47'
 Author = 'Schvenn'
 CompanyName = 'Plath Consulting Incorporated'
