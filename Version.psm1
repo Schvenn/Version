@@ -326,7 +326,15 @@ if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -P
 if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-Null}
 
 # When running version against all commands, enumerate and compare directories to current assets and archive retired ones at the end of the process.
-$currentFunctionsAndAliases = Get-Command -Type Function, Alias | Select-Object -ExpandProperty Name; $existingDirs = Get-ChildItem -Path $devHistoryPath -Directory | Select-Object -ExpandProperty Name; $retiredDirs = $existingDirs |  Where-Object {$_ -notin $currentFunctionsAndAliases -and $_ -notlike '.hidden*'}
+$currentFunctionsAndAliases = Get-Command -Type Function, Alias | Select-Object -ExpandProperty Name
+
+# Extract function and alias names from the profile file(s)
+$profileFiles = Get-Item $PROFILE* -ErrorAction SilentlyContinue | Where-Object {$_ -and (Test-Path $_)}; $profileExtras = @()
+foreach ($file in $profileFiles) {$matches = Select-String -Path $file.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*(sal|set-alias)\s+-name\s+(\w+)' -AllMatches
+foreach ($match in $matches) {foreach ($m in $match.Matches) {$name = if ($m.Groups.Count -gt 2) {$m.Groups[2].Value}
+else {$m.Groups[1].Value}
+if ($name -and $name -notin $profileExtras) {$profileExtras += $name}}}}
+$currentFunctionsAndAliases += $profileExtras | Sort-Object -Unique; $existingDirs = Get-ChildItem -Path $devHistoryPath -Directory | Select-Object -ExpandProperty Name; $retiredDirs = $existingDirs |  Where-Object {$_ -notin $currentFunctionsAndAliases -and $_ -notlike '.hidden*'}
 if ($retiredDirs.Count -gt 2) {Write-Host -f white "The following commands are not present in the current session: " -n; $retiredDirs -join ", " | Write-Host -f cyan; Write-Host -f white "This means that there are " -n; Write-Host -f green $retiredDirs.Count -n; Write-Host -f white " directories to archive. Are you sure you want to continue? " -n; [console]::foregroundcolor = "red"; $response = Read-Host "(Y/N)"; if ($response -notmatch "(?i)^Y") {[console]::foregroundcolor = "gray"; ""; return}}
 [console]::foregroundcolor = "gray"; if ($retiredDirs.Count -gt 0) {$retiredDirs | ForEach-Object {$dirPath = Join-Path $devHistoryPath $_; 
 if (-not (Test-Path $dirPath)) {Write-Host "Warning: Directory not found: $dirPath"}
