@@ -347,7 +347,7 @@ Export-ModuleMember -Function version
 
 # -------------------------------- Help screens -----------------------------------------------------------------------
 <#
-## version
+## Version
 
 Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -all -help
 
@@ -367,7 +367,7 @@ The -dev feature disables all pruning by date or volume until the devflag is tur
 The -stable flag disables the -dev mode, indicating that normal pruning and history retention can resume.
 
 The -quiet option will reduce the screen output; reduce, not completely eliminate.
-
+## Advanced Options
 The -hidden option will attempt to find and backup private/hidden functions within a module.
 
 The -all switch will run the command against all of the commands available as a result of the current user's profile.
@@ -384,4 +384,26 @@ The -list option will provide a table of all version directories available, the 
 	• Functions with their development flag set will also be clearly identified.
 
 This module also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older version. So, keep that in mind.
+## License
+MIT License
+
+Copyright © 2025 Craig Plath
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
+copies of the Software, and to permit persons to whom the Software is 
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in 
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN 
+THE SOFTWARE.
 ##>
