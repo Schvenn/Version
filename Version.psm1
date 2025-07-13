@@ -9,41 +9,89 @@ if ($dev -and (-not $cmd)) {Write-Host -f red "`nYou must specify a single comma
 if ($dev -and $stable) {Write-Host -f red "`nA command can only be under development or a stable release, not both.`n"; return}
 
 # Modify fields sent to it with proper word wrapping.
-function wordwrap ($field, $maximumlinelength) {if ($null -eq $field -or $field.Length -eq 0) {return $null}
+function wordwrap ($field, $maximumlinelength) {if ($null -eq $field) {return $null}
 $breakchars = ',.;?!\/ '; $wrapped = @()
-
 if (-not $maximumlinelength) {[int]$maximumlinelength = (100, $Host.UI.RawUI.WindowSize.Width | Measure-Object -Maximum).Maximum}
-if ($maximumlinelength) {if ($maximumlinelength -lt 60) {[int]$maximumlinelength = 60}
-if ($maximumlinelength -gt $Host.UI.RawUI.BufferSize.Width) {[int]$maximumlinelength = $Host.UI.RawUI.BufferSize.Width}}
-
-foreach ($line in $field -split "`n") {if ($line.Trim().Length -eq 0) {$wrapped += ''; continue}
-$remaining = $line.Trim()
+if ($maximumlinelength -lt 60) {[int]$maximumlinelength = 60}
+if ($maximumlinelength -gt $Host.UI.RawUI.BufferSize.Width) {[int]$maximumlinelength = $Host.UI.RawUI.BufferSize.Width}
+foreach ($line in $field -split "`n", [System.StringSplitOptions]::None) {if ($line -eq "") {$wrapped += ""; continue}
+$remaining = $line
 while ($remaining.Length -gt $maximumlinelength) {$segment = $remaining.Substring(0, $maximumlinelength); $breakIndex = -1
-
 foreach ($char in $breakchars.ToCharArray()) {$index = $segment.LastIndexOf($char)
-if ($index -gt $breakIndex) {$breakChar = $char; $breakIndex = $index}}
-if ($breakIndex -lt 0) {$breakIndex = $maximumlinelength - 1; $breakChar = ''}
-$chunk = $segment.Substring(0, $breakIndex + 1).TrimEnd(); $wrapped += $chunk; $remaining = $remaining.Substring($breakIndex + 1).TrimStart()}
-
-if ($remaining.Length -gt 0) {$wrapped += $remaining}}
+if ($index -gt $breakIndex) {$breakIndex = $index}}
+if ($breakIndex -lt 0) {$breakIndex = $maximumlinelength - 1}
+$chunk = $segment.Substring(0, $breakIndex + 1); $wrapped += $chunk; $remaining = $remaining.Substring($breakIndex + 1)}
+if ($remaining.Length -gt 0 -or $line -eq "") {$wrapped += $remaining}}
 return ($wrapped -join "`n")}
 
-if ($help) {# Inline help.
-function scripthelp ($section) {# (Internal) Generate the help sections from the comments section of the script.
-""; Write-Host -f yellow ("-" * 100); $pattern = "(?ims)^## ($section.*?)(##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; Write-Host $lines[0] -f yellow; Write-Host -f yellow ("-" * 100)
-if ($lines.Count -gt 1) {wordwrap $lines[1] 100| Out-String | Out-Host -Paging}; Write-Host -f yellow ("-" * 100)}
-$scripthelp = Get-Content -Raw -Path $PSCommandPath; $sections = [regex]::Matches($scripthelp, "(?im)^## (.+?)(?=\r?\n)")
-if ($sections.Count -eq 1) {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help:" -f cyan; scripthelp $sections[0].Groups[1].Value; ""; return}
+# Display a horizontal line.
+function line ($colour, $length, [switch]$pre, [switch]$post, [switch]$double) {if (-not $length) {[int]$length = (100, $Host.UI.RawUI.WindowSize.Width | Measure-Object -Maximum).Maximum}
+if ($length) {if ($length -lt 60) {[int]$length = 60}
+if ($length -gt $Host.UI.RawUI.BufferSize.Width) {[int]$length = $Host.UI.RawUI.BufferSize.Width}}
+if ($pre) {Write-Host ""}
+$character = if ($double) {"="} else {"-"}
+Write-Host -f $colour ($character * $length)
+if ($post) {Write-Host ""}}
 
-$selection = $null
-do {cls; Write-Host "$([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) Help Sections:`n" -f cyan; for ($i = 0; $i -lt $sections.Count; $i++) {
-"{0}: {1}" -f ($i + 1), $sections[$i].Groups[1].Value}
-if ($selection) {scripthelp $sections[$selection - 1].Groups[1].Value}
-$input = Read-Host "`nEnter a section number to view"
-if ($input -match '^\d+$') {$index = [int]$input
-if ($index -ge 1 -and $index -le $sections.Count) {$selection = $index}
-else {$selection = $null}} else {""; return}}
-while ($true); return}
+function help {# Inline help.
+# Select content.
+$scripthelp = Get-Content -Raw -Path $PSCommandPath; $sections = [regex]::Matches($scripthelp, "(?im)^## (.+?)(?=\r?\n)"); $selection = $null; $lines = @(); $wrappedLines = @(); $position = 0; $pageSize = 30; $inputBuffer = ""
+
+function scripthelp ($section) {$pattern = "(?ims)^## ($([regex]::Escape($section)).*?)(?=^##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $lines = $match.Groups[1].Value.TrimEnd() -split "`r?`n", 2; if ($lines.Count -gt 1) {$wrappedLines = (wordwrap $lines[1] 100) -split "`n", [System.StringSplitOptions]::None}
+else {$wrappedLines = @()}
+$position = 0}
+
+# Display Table of Contents.
+while ($true) {cls; Write-Host -f cyan "$(Get-ChildItem (Split-Path $PSCommandPath) | Where-Object { $_.FullName -ieq $PSCommandPath } | Select-Object -ExpandProperty BaseName) Help Sections:`n"
+
+if ($sections.Count -gt 7) {$half = [Math]::Ceiling($sections.Count / 2)
+for ($i = 0; $i -lt $half; $i++) {$leftIndex = $i; $rightIndex = $i + $half; $leftNumber  = "{0,2}." -f ($leftIndex + 1); $leftLabel   = " $($sections[$leftIndex].Groups[1].Value)"; $leftOutput  = [string]::Empty
+
+if ($rightIndex -lt $sections.Count) {$rightNumber = "{0,2}." -f ($rightIndex + 1); $rightLabel  = " $($sections[$rightIndex].Groups[1].Value)"; Write-Host -f cyan $leftNumber -n; Write-Host -f white $leftLabel -n; $pad = 40 - ($leftNumber.Length + $leftLabel.Length)
+if ($pad -gt 0) {Write-Host (" " * $pad) -n}; Write-Host -f cyan $rightNumber -n; Write-Host -f white $rightLabel}
+else {Write-Host -f cyan $leftNumber -n; Write-Host -f white $leftLabel}}}
+
+else {for ($i = 0; $i -lt $sections.Count; $i++) {Write-Host -f cyan ("{0,2}. " -f ($i + 1)) -n; Write-Host -f white "$($sections[$i].Groups[1].Value)"}}
+
+# Display Header.
+line yellow 100
+if ($lines.Count -gt 0) {Write-Host  -f yellow $lines[0]}
+else {Write-Host "Choose a section to view." -f darkgray}
+line yellow 100
+
+# Display content.
+$end = [Math]::Min($position + $pageSize, $wrappedLines.Count)
+for ($i = $position; $i -lt $end; $i++) {Write-Host -f white $wrappedLines[$i]}
+
+# Pad display section with blank lines.
+for ($j = 0; $j -lt ($pageSize - ($end - $position)); $j++) {Write-Host ""}
+
+# Display menu options.
+line yellow 100; Write-Host -f white "[↑/↓]  [PgUp/PgDn]  [Home/End]  |  [#] Select section  |  [Q] Quit  " -n; if ($inputBuffer.length -gt 0) {Write-Host -f cyan "section: $inputBuffer" -n}; $key = [System.Console]::ReadKey($true)
+
+# Define interaction.
+switch ($key.Key) {'UpArrow' {if ($position -gt 0) { $position-- }; $inputBuffer = ""}
+'DownArrow' {if ($position -lt ($wrappedLines.Count - $pageSize)) { $position++ }; $inputBuffer = ""}
+'PageUp' {$position -= 30; if ($position -lt 0) {$position = 0}; $inputBuffer = ""}
+'PageDown' {$position += 30; $maxStart = [Math]::Max(0, $wrappedLines.Count - $pageSize); if ($position -gt $maxStart) {$position = $maxStart}; $inputBuffer = ""}
+'Home' {$position = 0; $inputBuffer = ""}
+'End' {$maxStart = [Math]::Max(0, $wrappedLines.Count - $pageSize); $position = $maxStart; $inputBuffer = ""}
+
+'Enter' {if ($inputBuffer -eq "") {"`n"; return}
+elseif ($inputBuffer -match '^\d+$') {$index = [int]$inputBuffer
+if ($index -ge 1 -and $index -le $sections.Count) {$selection = $index; $pattern = "(?ims)^## ($([regex]::Escape($sections[$selection-1].Groups[1].Value)).*?)(?=^##|\z)"; $match = [regex]::Match($scripthelp, $pattern); $block = $match.Groups[1].Value.TrimEnd(); $lines = $block -split "`r?`n", 2
+if ($lines.Count -gt 1) {$wrappedLines = (wordwrap $lines[1] 100) -split "`n", [System.StringSplitOptions]::None}
+else {$wrappedLines = @()}
+$position = 0}}
+$inputBuffer = ""}
+
+default {$char = $key.KeyChar
+if ($char -match '^[Qq]$') {"`n"; return}
+elseif ($char -match '^\d$') {$inputBuffer += $char}
+else {$inputBuffer = ""}}}}}
+
+# External call to help.
+if ($help) {help; return}
 
 if ($cmd -and $hidden) {# Backup hidden function.
 
@@ -348,40 +396,48 @@ Export-ModuleMember -Function version
 # -------------------------------- Help screens -----------------------------------------------------------------------
 <#
 ## Version
-
-Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -all -help
+     Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -all -help
 
 This script allows you to backup a command that you are currently modifying to your "PowerShell\Archive\Development History" directory.
 
 This differs from backing up scripts and modules in that it only keeps copies of the command logic, making it much easier to keep track of the iterative development of individual components.
-	• If executed against an alias, the script will backup the logic of the parent command and append the logic required to create the alias to the end of it.
-	• If the command is simply a reference to an external script, the function will attempt to obtain the logic of that script and also append it to the end.
+
+• If executed against an alias, the script will backup the logic of the parent command and append the logic required to create the alias to the end of it.
+
+• If the command is simply a reference to an external script, the function will attempt to obtain the logic of that script and also append it to the end.
 
 The -purge feature will delete all version copies of the command in question and the directory in which they reside.
 
 The # (maxhistory) feature sets the maximum number of versions to keep of the command in question. The default is 10.
-	• This feature uses logical assumptions to determine development dates, by keeping the first and last versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that the major and most relevant revisions are kept over minor and historically outdated versions.
+
+• This feature uses logical assumptions to determine development dates, by keeping the first and last versions of a command for any single date, before it resorts to pruning the oldest files, thereby increasing the likelihood that the major and most relevant revisions are kept over minor and historically outdated versions.
 
 The -dev feature disables all pruning by date or volume until the devflag is turned off. This overrides the # (maxhistory) feature.
 
 The -stable flag disables the -dev mode, indicating that normal pruning and history retention can resume.
 
 The -quiet option will reduce the screen output; reduce, not completely eliminate.
-## Advanced Options
+
 The -hidden option will attempt to find and backup private/hidden functions within a module.
 
 The -all switch will run the command against all of the commands available as a result of the current user's profile.
-	• -force completes a backup, even if the "ranflag" is set, which prevents the backup from running more than once a month.
-	• At the end of the process, the script will determine if any commands no longer exist and archive them in a ZIP file for future reference.
+
+• -force completes a backup, even if the "ranflag" is set, which prevents the backup from running more than once a month.
+
+• At the end of the process, the script will determine if any commands no longer exist and archive them in a ZIP file for future reference.
 
 The -compare option will compare different version backups of the command specified with one another, in order to demonstrate differences.
-	• The comparison uses a character match percentage to provide output. Lines that exist 100% identically in the other file will be white, 80-100% matches will be cyan, the rest will be yellow.
-	• -differences will display only those lines that are different from one another.
-		• -savedifferences will save the differences output to a file: command - yyyy-mm-dd_hh-mm-ss & yyyy-mm-dd_hh-mm-ss.differences.
+
+• The comparison uses a character match percentage to provide output. Lines that exist 100% identically in the other file will be white, 80-100% matches will be cyan, the rest will be yellow.
+
+• -differences will display only those lines that are different from one another.
+    • -savedifferences will save the differences output to a file: command - yyyy-mm-dd_hh-mm-ss & yyyy-mm-dd_hh-mm-ss.differences.
 
 The -list option will provide a table of all version directories available, the number of files contained therein and a summary.
-	• Aliases and script backups will be marked, accordingly.
-	• Functions with their development flag set will also be clearly identified.
+
+• Aliases and script backups will be marked, accordingly.
+
+• Functions with their development flag set will also be clearly identified.
 
 This module also uses intelligent archiving to ensure that new backups are only created if the SHA256 of the new file will be different than any older one, thereby eliminating duplicates and wasted disk space. This does of course, mean that it's possible to skip a version if the latest copy was an abandoned approach and the user eventually reverted to an older version. So, keep that in mind.
 ## License
