@@ -1,5 +1,4 @@
-@{
-RootModule = 'version.psm1'
+@{RootModule = 'version.psm1'
 ModuleVersion = '1.3'
 GUID = 'd5f8e5b3-1a23-4a9f-8b7c-9e6c5b3a2f47'
 Author = 'Schvenn'
@@ -11,11 +10,9 @@ FunctionsToExport = @('version')
 CmdletsToExport = @()
 VariablesToExport = @()
 AliasesToExport = @()
-FileList = @('version.psm1','license.txt')
-PrivateData = @{
-PSData = @{
-Tags = @('archive','backup','compare','development','devops','history','versioning')
-LicenseUri = 'https://github.com/Schvenn/Version/blob/main/license.txt'
+FileList = @('version.psm1')
+
+PrivateData = @{PSData = @{Tags = @('archive','backup','compare','development','devops','history','versioning')
+LicenseUri = 'https://github.com/Schvenn/Version/blob/main/LICENSE'
 ProjectUri = 'https://github.com/Schvenn/Version'
-ReleaseNotes = 'Initial PowerShell gallery release. Versioning and archiving system for PowerShell commands.'
-}}}
+ReleaseNotes = 'Initial PowerShell gallery release. Versioning and archiving system for PowerShell commands.'}}}
