@@ -1,4 +1,4 @@
-function version ($cmd, [int]$maxhistory = 5, [switch]$dev, [switch]$stable, [switch]$quiet, [switch]$hidden, [switch]$all, [switch]$force, [switch]$purge, [switch]$compare, [switch]$savedifferences, [switch]$differences, [switch]$list, [switch]$help) {# Keep a historical list of functions and aliases during development, but only if they change.
+function version ($cmd, [int]$maxhistory = 5, [switch]$dev, [switch]$stable, [switch]$quiet, [switch]$hidden, [switch]$all, [switch]$force, [switch]$purge, [switch]$compare, [switch]$savedifferences, [switch]$differences, [switch]$list, [switch]$help) {# Maintains version history of functions and aliases during development.
 
 function readbackupfilecontent ([string]$path) {if ($path -like '*.gz') {$fs = [System.IO.File]::OpenRead($path); $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress); $reader = New-Object System.IO.StreamReader($gz); $content = $reader.ReadToEnd(); $reader.Close(); $gz.Close(); $fs.Close(); return $content -split "`r?`n"}
 else {return Get-Content $path}}
