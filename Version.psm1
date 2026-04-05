@@ -370,7 +370,7 @@ if (-not $all) {archive -cmd $cmd -maxhistory $maxhistory -stable:$stable -quiet
 # Alternately, run version against every command.
 if ($all) {$today = [int](Get-Date).day; $ranflag = "$PowerShell\Archive\Development History\.backupallversions"; $devHistoryPath = "$PowerShell\Archive\Development History"; $zipFile = "$PowerShell\Archive\Retired Functions and Aliases.zip"
 if ($force) {$today = 1; try {Remove-Item $ranflag -Force -ea SilentlyContinue| Out-Null} catch {""}}
-if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '^\s*function\s+([\w\-]+)', '^\s*(sal|set-alias)\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object {$fn = if ($_.Groups.Count -gt 2) {$_.Groups[2].Value} else {$_.Groups[1].Value}; if (-not ($fn -eq 'archive' -and $scriptPath -eq $MyInvocation.MyCommand.Path)) {$fn}}}} | Sort-Object -Unique | ForEach-Object {archive -cmd $_ -maxhistory $maxhistory -stable:$stable -quiet:$quiet -purge:$purge}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
+if ($today -eq 1 -and !(Test-Path $ranflag)) {Get-ChildItem -Path (Split-Path -Parent $PROFILE) -Recurse -Include *.ps1, *.psm1 | ForEach-Object {Select-String -Path $_.FullName -Pattern '(?i)^\s*function\s+([\w\-]+)', '(?i)^\s*(sal|set-alias)\s+-name\s+(\w+)' | ForEach-Object {$_.Matches | ForEach-Object {$fn = if ($_.Groups.Count -gt 2) {$_.Groups[2].Value} else {$_.Groups[1].Value}; if (-not ($fn -eq 'archive' -and $scriptPath -eq $MyInvocation.MyCommand.Path)) {$fn}}}} | Sort-Object -Unique | ForEach-Object {archive -cmd $_ -maxhistory $maxhistory -stable:$stable -quiet:$quiet -purge:$purge}; New-Item -Path $ranflag -ItemType File -Force | Out-Null}
 if ($today -ne 1 -and (Test-Path $ranflag)) {Remove-Item $ranflag -Force | Out-Null}
 
 # When running version against all commands, enumerate and compare directories to current assets and archive retired ones at the end of the process.
@@ -396,7 +396,7 @@ Export-ModuleMember -Function version
 # -------------------------------- Help screens -----------------------------------------------------------------------
 <#
 ## Version
-     Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -all -help
+     Usage: version "command" -purge #(maxhistory) -(dev/stable) -quiet -hidden -all -force -(compare -savedifferences -differences) -list -help
 
 This script allows you to backup a command that you are currently modifying to your "PowerShell\Archive\Development History" directory.
 
